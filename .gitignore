@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+.env
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# FastAPI / uvicorn
+*.log
+
+# Temporary files / caches
+*.tmp
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Local IDE / editor settings
+.vscode/
+.idea/
+*.iml
+
+# Test caches
+htmlcov/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Pytest virtual environment caches
+.pytest_cache/
+
+# Ignore the .planning directory except the essential files (keep .planning/PROJECT.md, ROADMAP.md, REQUIREMENTS.md, PLAN_*.md, STATE.md) – you can list them explicitly if needed.
+.planning/*
+!.planning/PROJECT.md
+!.planning/ROADMAP.md
+!.planning/REQUIREMENTS.md
+!.planning/PLAN_*.md
+!.planning/STATE.md
+
+# Misc
+.DS_Store
+*.log
+
+# End of .gitignore
