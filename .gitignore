@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 
 # Virtual environment
+# Ignore zip archives
+*.zip
 .venv/
 .env
 

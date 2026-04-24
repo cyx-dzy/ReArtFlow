@@ -17,7 +17,10 @@ automatically retries with the secondary provider (if configured).
 """
 
 import os
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None
 import json
 import hashlib
 import time
@@ -51,7 +54,7 @@ class LLMClient:
         yaml_cfg = {}
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                yaml_cfg = yaml.safe_load(f) or {}
+                yaml_cfg = yaml.safe_load(f) if yaml else {}
         except FileNotFoundError:
             logger.debug("LLM YAML config %s not found, falling back to env vars", config_path)
         except Exception as e:
