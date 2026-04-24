@@ -56,4 +56,5 @@ config/llm.yaml
 .DS_Store
 *.log
 
+gitdiagram/
 # End of .gitignore
