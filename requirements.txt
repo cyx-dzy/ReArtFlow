@@ -3,6 +3,7 @@ fastapi==0.136.0          # Web 框架，提供 /input 与 /parse 接口
 uvicorn==0.30.6           # ASGI 服务器，用于本地运行 FastAPI
 pydantic==2.13.3          # 数据模型校验（ParsedFile 等）
 httpx==0.28.1             # FastAPI 测试客户端的底层依赖
+PyYAML==6.0.1
 
 # ── 开发/测试依赖 ────────────────────────────────────────
 pytest==9.0.3             # 单元/集成测试框架
