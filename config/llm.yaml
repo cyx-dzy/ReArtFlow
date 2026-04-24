@@ -1,7 +1,0 @@
-# LLM client configuration (can be overridden by environment variables)
-LLM_PROVIDER: openai
-LLM_MODEL: openclaw
-OPENAI_API_KEY: "ah-85e1d983f9dd8b80ddfc6c0f4e1e0c679cf441390c47dea56ab82dab9066e428"
-#QIANWEN_API_KEY: "sk-YourQianwenKey"
-# Optional custom proxy / gateway URL for both providers
-LLM_API_URL: https://aihub.889428.xyz/
