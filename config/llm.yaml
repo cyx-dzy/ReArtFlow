@@ -1,0 +1,7 @@
+# LLM client configuration (can be overridden by environment variables)
+LLM_PROVIDER: openai
+LLM_MODEL: gpt-4o
+OPENAI_API_KEY: "sk-YourOpenAIKey"
+QIANWEN_API_KEY: "sk-YourQianwenKey"
+# Optional custom proxy / gateway URL for both providers
+LLM_API_URL: null

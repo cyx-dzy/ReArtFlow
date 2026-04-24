@@ -50,6 +50,7 @@ coverage.xml
 !.planning/STATE.md
 
 # Misc
+config/llm.yaml
 .DS_Store
 *.log
 
