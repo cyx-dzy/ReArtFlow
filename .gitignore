@@ -57,6 +57,7 @@ node_modules/
 
 # Local config
 config/llm.yaml
+backend/semantic/config/llm.yaml
 
 gitdiagram/
 # End of .gitignore
