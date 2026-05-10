@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Diagram 渲染测试</title>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- AntV G6 CDN -->
+  <script src="https://unpkg.com/@antv/g6@4.8.3/dist/g6.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { createApp, defineComponent, h } from "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js";
+    // Inline the Diagram component (simplified version)
+    const Diagram = defineComponent({
+      props: { graphData: Object },
+      mounted() {
+        const container = this.$el;
+        const graph = new G6.Graph({
+          container,
+          width: 800,
+          height: 600,
+          fitView: true,
+          modes: { default: ["drag-canvas", "zoom-canvas", "drag-node"] },
+          defaultNode: { type: "rect", style: { fill: "#fff", stroke: "#666" } },
+          defaultEdge: { style: { stroke: "#aaa" } }
+        });
+        const nodes = this.graphData.nodes.map(n => ({ id: n.id, label: n.label }));
+        const edges = this.graphData.edges.map(e => ({ source: e.source, target: e.target }));
+        graph.data({ nodes, edges });
+        graph.render();
+      },
+      render() { return h('div', { style: { width: "800px", height: "600px", border: "1px solid #eaeaea" } }); }
+    });
+
+    const app = createApp({
+      data() {
+        return {
+          diagram: {
+            nodes: [
+              { id: "root", label: "项目根节点" },
+              { id: "module1", label: "模块一" },
+              { id: "module2", label: "模块二" }
+            ],
+            edges: [
+              { source: "root", target: "module1" },
+              { source: "module1", target: "module2" }
+            ]
+          }
+        };
+      },
+      template: `<Diagram :graphData="diagram"/>`,
+      components: { Diagram }
+    });
+    app.mount('#app');
+  </script>
+</body>
+</html>

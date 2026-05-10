@@ -4,23 +4,34 @@ __pycache__/
 *$py.class
 
 # Virtual environment
-# Ignore zip archives
-*.zip
 .venv/
 .env
+
+# Archives
+*.zip
 
 # Build artifacts
 build/
 dist/
 *.egg-info/
 
-# FastAPI / uvicorn
+# FastAPI / uvicorn / misc logs
 *.log
 
 # Temporary files / caches
 *.tmp
 *.swp
 *.swo
+.cache
+.pytest_cache/
+
+# Test reports
+htmlcov/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
 
 # OS generated files
 .DS_Store
@@ -31,30 +42,21 @@ Thumbs.db
 .idea/
 *.iml
 
-# Test caches
-htmlcov/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
+# Frontend (Node / Vite)
+frontend/node_modules/
+frontend/dist/
+node_modules/
 
-# Pytest virtual environment caches
-.pytest_cache/
+# Planning workspace (ignore all except key files)
+#.planning/*
+#!.planning/PROJECT.md
+#!.planning/ROADMAP.md
+#!.planning/REQUIREMENTS.md
+#!.planning/PLAN_*.md
+#!.planning/STATE.md
 
-# Ignore the .planning directory except the essential files (keep .planning/PROJECT.md, ROADMAP.md, REQUIREMENTS.md, PLAN_*.md, STATE.md) – you can list them explicitly if needed.
-.planning/*
-!.planning/PROJECT.md
-!.planning/ROADMAP.md
-!.planning/REQUIREMENTS.md
-!.planning/PLAN_*.md
-!.planning/STATE.md
-
-# Misc
+# Local config
 config/llm.yaml
-.DS_Store
-*.log
 
 gitdiagram/
 # End of .gitignore

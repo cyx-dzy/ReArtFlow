@@ -9,7 +9,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.background import BackgroundTasks
 from typing import List, Dict, Any
 
-from ...semantic import LLMClient, to_mermaid, to_g6
+# Lazy import to avoid heavy dependencies during initial startup
+try:
+    from ...semantic import LLMClient, to_mermaid, to_g6
+except ModuleNotFoundError:
+    # Provide minimal stubs when optional dependencies are missing
+    class LLMClient:
+        def generate_explanation(self, code: str, language: str):
+            raise NotImplementedError("LLMClient requires optional dependencies (e.g., langchain) which are not installed.")
+    def to_mermaid(diagram):
+        raise NotImplementedError("to_mermaid unavailable without semantic module.")
+    def to_g6(diagram):
+        raise NotImplementedError("to_g6 unavailable without semantic module.")
+
 
 router = APIRouter()
 

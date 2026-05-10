@@ -24,7 +24,18 @@ def get_diagram(project_id: str):
     diagram = _DIAGRAM_STORE.get(project_id)
     if diagram is None:
         # placeholder diagram – a single node with the project id
-        diagram = {"nodes": [{"id": "root", "label": project_id}], "edges": []}
+        # 默认返回一个包含多个节点的示例 diagram，便于前端渲染与测试
+        diagram = {
+            "nodes": [
+                {"id": "root", "label": project_id},
+                {"id": "module1", "label": "模块一"},
+                {"id": "module2", "label": "模块二"}
+            ],
+            "edges": [
+                {"source": "root", "target": "module1"},
+                {"source": "module1", "target": "module2"}
+            ]
+        }
         _DIAGRAM_STORE[project_id] = diagram
     # Convert using existing utilities
     from backend.semantic import to_mermaid, to_g6
