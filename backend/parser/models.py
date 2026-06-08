@@ -1,11 +1,9 @@
-"""Pydantic model representing a parsed source file.
+"""Pydantic model representing a parsed source file."""
 
-The model mirrors the dictionary produced by ``parse_file`` and adds validation
-against the schema used downstream.
-"""
-
-from pydantic import BaseModel, Field
 from typing import Dict
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class ParsedFile(BaseModel):
     path: str = Field(..., description="Absolute path to the source file")
@@ -14,10 +12,10 @@ class ParsedFile(BaseModel):
     parse_time_ms: float = Field(..., ge=0, description="Parsing duration in milliseconds")
     language: str = Field(..., description="Detected programming language")
     ast_summary: Dict[str, int] = Field(
-        ..., description="Lightweight summary of AST nodes (functions, classes, imports, calls)"
+        ..., description="AST summary of structural elements (functions, classes, imports, calls)"
     )
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
 
 __all__ = ["ParsedFile"]

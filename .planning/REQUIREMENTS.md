@@ -76,35 +76,42 @@ type: project
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INP-01 | Phase 1 | Pending |
-| INP-02 | Phase 1 | Pending |
-| INP-03 | Phase 1 | Pending |
-| INP-04 | Phase 1 | Pending |
-| PAR-01 | Phase 2 | Pending |
-| PAR-02 | Phase 2 | Pending |
-| PAR-03 | Phase 2 | Pending |
-| PAR-04 | Phase 2 | Pending |
-| AI-01 | Phase 3 | Pending |
-| AI-02 | Phase 3 | Pending |
-| AI-03 | Phase 3 | Pending |
-| VIS-01 | Phase 4 | Pending |
-| VIS-02 | Phase 4 | Pending |
-| VIS-03 | Phase 4 | Pending |
-| UI-01 | Phase 5 | Pending |
+| INP-01 | Phase 1 | In Progress |
+| INP-02 | Phase 1 | In Progress |
+| INP-03 | Phase 1 | In Progress |
+| INP-04 | Phase 1 | In Progress |
+| PAR-01 | Phase 2 | In Progress |
+| PAR-02 | Phase 2 | In Progress |
+| PAR-03 | Phase 2 | In Progress |
+| PAR-04 | Phase 2 | In Progress |
+| AI-01 | Phase 3 | Blocked |
+| AI-02 | Phase 3 | Blocked |
+| AI-03 | Phase 3 | Blocked |
+| VIS-01 | Phase 4 | In Progress |
+| VIS-02 | Phase 4 | In Progress |
+| VIS-03 | Phase 4 | In Progress |
+| UI-01 | Phase 5 | In Progress |
 | UI-02 | Phase 5 | Pending |
 | UI-03 | Phase 5 | Pending |
-| DEP-01 | Phase 6 | Pending |
+| DEP-01 | Phase 6 | In Progress |
 | DEP-02 | Phase 6 | Pending |
-| DEP-03 | Phase 6 | Pending |
-| SEC-01 | Phase 1 | Pending |
-| SEC-02 | Phase 1 | Pending |
-| SEC-03 | Phase 1 | Pending |
+| DEP-03 | Phase 6 | Done |
+| SEC-01 | Phase 1 | In Progress |
+| SEC-02 | Phase 1 | In Progress |
+| SEC-03 | Phase 1 | In Progress |
 
 **Coverage:**
 - v1 requirements: 28 total
 - Mapped to phases: 28
 - Unmapped: 0 ✅
 
+## Audit Notes (2026-05-11)
+
+- 当前代码库并未完成真正的 Tree-sitter 解析；`backend/parser/tree_sitter_pool.py` 仍为占位实现。
+- 当前语义层存在导入失败与主路径未返回结果的问题；Phase 3 处于阻塞状态。
+- 当前图谱接口与前端渲染可用于 demo，但尚不足以视为 Phase 4 验收完成。
+- 当前 Docker Compose 与前端交付链路未闭环，部署能力仍处于进行中。
+
 ---
 *Requirements defined: 2026-04-22*
-*Last updated: 2026-04-22 after initial definition*
+*Last updated: 2026-05-11 after corrective codebase audit*
