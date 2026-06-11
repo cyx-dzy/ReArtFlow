@@ -43,3 +43,22 @@ type: uat
 
 ---
 > 结论：第 4 阶段当前状态应为 **In Progress（demo only）**，而不是 Ready to verify / Accepted。
+
+## Repair Verification Update 2026-06-11
+
+当前第 4 阶段已从 demo-only 推进到局部真实闭环：
+
+- `POST /input` 的 local 路径输入已能生成真实项目图。
+- `GET /diagram/{project_id}` 对已生成项目返回 Mermaid 与 G6，对未知项目返回 404。
+- 前端已从硬编码 demo 页面改为 Zip、本地路径、GitHub、Gitee 四类输入，并渲染后端返回的 G6 数据。
+- 后端测试：`18 passed, 1 skipped`。
+- 前端构建：`npm run build` 通过。
+- 手动 HTTP 验证：以 `D:\project\ReActFlow\backend` 为输入，生成 103 nodes / 102 edges，且不包含旧 demo 文本 `模块一`。
+
+仍未完成正式 Phase 4 验收的项目：
+
+- Browser 插件对 localhost 导航返回 `ERR_BLOCKED_BY_CLIENT`，本轮未完成可视化截图验收。
+- Zip 上传、GitHub、Gitee 输入仍需浏览器/手动链路验证。
+- DeepSeek 真实 API 需使用有效 `DEEPSEEK_API_KEY` 并设置 `RUN_DEEPSEEK_INTEGRATION=1` 单独复验。
+- Docker Compose 尚未复验。
+- 图谱当前主要是解析器结构摘要，后续还需增强为更精确的 symbol/call graph。

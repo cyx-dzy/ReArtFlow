@@ -9,8 +9,14 @@ FastAPI route for exposing diagram data.
 from fastapi import APIRouter, HTTPException
 from typing import Dict
 
-# Simple in‑memory store: project_id -> diagram dict (same shape as LLM output)
-_DIAGRAM_STORE: Dict[str, Dict] = {}
+from backend.diagram.project_graph import (
+    PROJECT_DIAGRAM_STORE,
+    format_diagram_response,
+    get_project_diagram,
+    store_project_diagram,
+)
+
+_DIAGRAM_STORE = PROJECT_DIAGRAM_STORE
 
 router = APIRouter()
 
@@ -21,27 +27,10 @@ def get_diagram(project_id: str):
     If the project has no stored diagram we return a minimal placeholder
     with a single node so the client can still render something.
     """
-    diagram = _DIAGRAM_STORE.get(project_id)
-    if diagram is None:
-        # placeholder diagram – a single node with the project id
-        # 默认返回一个包含多个节点的示例 diagram，便于前端渲染与测试
-        diagram = {
-            "nodes": [
-                {"id": "root", "label": project_id},
-                {"id": "module1", "label": "模块一"},
-                {"id": "module2", "label": "模块二"}
-            ],
-            "edges": [
-                {"source": "root", "target": "module1"},
-                {"source": "module1", "target": "module2"}
-            ]
-        }
-        _DIAGRAM_STORE[project_id] = diagram
-    # Convert using existing utilities
-    from backend.semantic import to_mermaid, to_g6
-    mermaid = to_mermaid(diagram)
-    g6 = to_g6(diagram)
-    return {"mermaid": mermaid, "g6": g6}
+    record = get_project_diagram(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project diagram not found: {project_id}")
+    return format_diagram_response(record)
 
 @router.post("/diagram/{project_id}")
 def store_diagram(project_id: str, payload: Dict):
@@ -51,5 +40,5 @@ def store_diagram(project_id: str, payload: Dict):
     """
     if not isinstance(payload, dict) or "nodes" not in payload:
         raise HTTPException(status_code=400, detail="Invalid diagram payload")
-    _DIAGRAM_STORE[project_id] = payload
-    return {"status": "stored", "project_id": project_id}
+    record = store_project_diagram(project_id, payload, source_type="manual")
+    return {"status": record["status"], "project_id": project_id}

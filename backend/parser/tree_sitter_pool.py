@@ -4,6 +4,7 @@ Uses official Tree-sitter grammar packages installed as separate Python modules.
 """
 
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -175,21 +176,85 @@ def _build_ast_summary(root_node: "Node", language_key: str) -> Dict[str, int]:
     }
 
 
+def _regex_ast_summary(source: str, language_key: str) -> Dict[str, int]:
+    if language_key == "python":
+        return {
+            "functions": len(re.findall(r"^\s*def\s+\w+\s*\(", source, flags=re.MULTILINE)),
+            "classes": len(re.findall(r"^\s*class\s+\w+", source, flags=re.MULTILINE)),
+            "imports": len(re.findall(r"^\s*(?:from\s+\S+\s+import|import\s+\S+)", source, flags=re.MULTILINE)),
+            "calls": len(re.findall(r"\b\w+(?:\.\w+)?\s*\(", source)),
+        }
+
+    if language_key in {"javascript", "typescript", "tsx"}:
+        return {
+            "functions": len(
+                re.findall(
+                    r"\bfunction\s+\w+\s*\(|\b\w+\s*=\s*\([^)]*\)\s*=>|\b\w+\s*:\s*\([^)]*\)\s*=>",
+                    source,
+                )
+            ),
+            "classes": len(re.findall(r"\bclass\s+\w+", source)),
+            "imports": len(re.findall(r"^\s*import\s+", source, flags=re.MULTILINE)),
+            "calls": len(re.findall(r"\b\w+(?:\.\w+)?\s*\(", source)),
+        }
+
+    if language_key == "java":
+        return {
+            "functions": len(
+                re.findall(
+                    r"\b(?:public|private|protected|static|\s)+[\w<>\[\]]+\s+\w+\s*\(",
+                    source,
+                )
+            ),
+            "classes": len(re.findall(r"\b(?:class|interface|enum|record)\s+\w+", source)),
+            "imports": len(re.findall(r"^\s*import\s+", source, flags=re.MULTILINE)),
+            "calls": len(re.findall(r"\b\w+(?:\.\w+)?\s*\(", source)),
+        }
+
+    if language_key == "go":
+        return {
+            "functions": len(re.findall(r"^\s*func\s+(?:\([^)]+\)\s*)?\w+\s*\(", source, flags=re.MULTILINE)),
+            "classes": 0,
+            "imports": len(re.findall(r"^\s*import\s+", source, flags=re.MULTILINE)),
+            "calls": len(re.findall(r"\b\w+(?:\.\w+)?\s*\(", source)),
+        }
+
+    if language_key == "rust":
+        return {
+            "functions": len(re.findall(r"^\s*fn\s+\w+\s*\(", source, flags=re.MULTILINE)),
+            "classes": len(re.findall(r"^\s*(?:struct|enum|trait|impl)\s+\w+", source, flags=re.MULTILINE)),
+            "imports": len(re.findall(r"^\s*use\s+", source, flags=re.MULTILINE)),
+            "calls": len(re.findall(r"\b\w+!?\s*\(", source)),
+        }
+
+    return {
+        "functions": len(re.findall(r"\b\w+\s+\w+\s*\([^;]*\)\s*\{", source)),
+        "classes": len(re.findall(r"\b(?:class|struct|union|enum)\s+\w+", source)),
+        "imports": len(re.findall(r"^\s*#\s*include\s+", source, flags=re.MULTILINE)),
+        "calls": len(re.findall(r"\b\w+(?:->\w+|::\w+|\.\w+)?\s*\(", source)),
+    }
+
+
 def parse_file(file_path: str) -> Dict[str, Any]:
     language_key = _detect_language_key(file_path)
     if not language_key:
         raise ValueError(f"Unsupported file type for Tree-sitter parsing: {file_path}")
 
     start = time.perf_counter()
-    source_bytes = Path(file_path).read_bytes()
-    parser = _get_parser(language_key)
-    tree = parser.parse(source_bytes)
-    ast_summary = _build_ast_summary(tree.root_node, language_key)
+    path = Path(file_path)
+    source_bytes = path.read_bytes()
+    try:
+        parser = _get_parser(language_key)
+        tree = parser.parse(source_bytes)
+        ast_summary = _build_ast_summary(tree.root_node, language_key)
+    except Exception:
+        source = source_bytes.decode("utf-8", errors="ignore")
+        ast_summary = _regex_ast_summary(source, language_key)
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     stat = os.stat(file_path)
     return {
-        "path": str(Path(file_path).resolve()),
+        "path": str(Path(file_path).absolute()),
         "size": stat.st_size,
         "mtime": stat.st_mtime,
         "parse_time_ms": elapsed_ms,

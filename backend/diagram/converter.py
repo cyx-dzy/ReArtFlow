@@ -11,7 +11,6 @@ def _escape_label(label: str) -> str:
         .replace("{", "\\{")
         .replace("}", "\\}")
         .replace("|", "\\|")
-        .replace(";", "\\;")
     )
 
 

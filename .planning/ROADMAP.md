@@ -3,10 +3,10 @@
 ## Phases
 
 - [ ] **Phase 1: Input & Security Handling** - Status: In Progress. Basic handlers exist, but route registration and end-to-end integration do not yet match the planned API.
-- [ ] **Phase 2: Multi-language Code Parsing** - Status: In Progress. Current parser is a placeholder and does not yet provide real Tree-sitter-based structure extraction.
-- [ ] **Phase 3: AI Semantic Understanding** - Status: Blocked. Semantic layer currently fails under missing optional imports and has a primary return-path bug.
-- [ ] **Phase 4: Diagram Generation** - Status: In Progress. Diagram API and frontend rendering exist at demo level, but correctness and delivery gaps remain.
-- [ ] **Phase 5: Frontend UI** - Status: Pending. Demo rendering exists, but search, file tree, and code-explanation linkage are not yet implemented end-to-end.
+- [ ] **Phase 2: Multi-language Code Parsing** - Status: In Progress. Parser now prefers Tree-sitter and falls back to deterministic summaries when grammar ABI versions are incompatible.
+- [ ] **Phase 3: AI Semantic Understanding** - Status: In Progress. DeepSeek text-provider support exists; real API verification requires `RUN_DEEPSEEK_INTEGRATION=1` and a valid `DEEPSEEK_API_KEY`.
+- [ ] **Phase 4: Diagram Generation** - Status: In Progress. Local input now generates retrievable real G6/Mermaid diagram data; Zip/GitHub/Gitee manual browser verification remains.
+- [ ] **Phase 5: Frontend UI** - Status: In Progress. Frontend now has Zip/path/GitHub/Gitee input controls and renders backend graph data, but search, file tree, and source linkage are still pending.
 - [ ] **Phase 6: Deployment & Operations** - Status: Pending. Health endpoint exists, but Docker/frontend delivery and scaling are not ready.
 
 ## Phase Details
@@ -84,3 +84,12 @@
   3. Horizontal scaling is not yet implemented or verified.
 **Effort**: Low/Medium
 **Plans**: Complete frontend containerization and only then verify Compose startup and scaling configuration.
+
+## Repair Update 2026-06-11
+
+- `POST /input` now runs input processing, project parsing, diagram construction, and stores graph data under a generated `project_id`.
+- `POST /input/zip` accepts raw zip bytes without requiring `python-multipart`.
+- `GET /diagram/{project_id}` now returns stored diagram data and returns 404 for unknown projects instead of demo placeholders.
+- `frontend/src/App.vue` now submits real inputs and renders returned G6 graph data.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 18 passed, 1 skipped; `npm run build` -> passed.
+- Manual HTTP verification produced a real graph from the backend directory: 103 nodes / 102 edges.

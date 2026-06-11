@@ -34,7 +34,8 @@ from .prompt_templates import build_semantic_function_schema, build_semantic_mes
 class LLMClient:
     def __init__(self):
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        self.model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        default_model = "deepseek-v4-pro" if self.provider == "deepseek" else "gpt-4o-mini"
+        self.model = os.getenv("LLM_MODEL", default_model)
         self.cache = SemanticCache()
 
     def generate_explanation(self, code: str, language: str) -> Dict[str, Any]:
@@ -47,6 +48,8 @@ class LLMClient:
             result = self._call_openai(code, language)
         elif self.provider == "qianwen":
             result = self._call_qianwen(code, language)
+        elif self.provider == "deepseek":
+            result = self._call_deepseek(code, language)
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
@@ -91,3 +94,26 @@ class LLMClient:
         payload = response.json()
         arguments = payload["choices"][0]["message"]["function_call"]["arguments"]
         return json.loads(arguments)
+
+    def _call_deepseek(self, code: str, language: str) -> Dict[str, Any]:
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is not set")
+
+        response = requests.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "messages": build_semantic_messages(code, language),
+                "response_format": {"type": "json_object"},
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"]
+        return json.loads(content)

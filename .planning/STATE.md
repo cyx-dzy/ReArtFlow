@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: blocked
-stopped_at: corrective codebase audit (2026-05-11)
-last_updated: "2026-05-11T00:00:00+08:00"
-last_activity: Corrective planning backfill after code audit
+status: in_progress
+stopped_at: phase 1-4 repair implementation (2026-06-11)
+last_updated: "2026-06-11T00:00:00+08:00"
+last_activity: Local input now generates retrievable real diagram data
 progress:
-  percent: 35
+  percent: 55
 ---
 
 # Project State
@@ -83,3 +83,14 @@ Progress: [███░░░░░░░] 35%
 Last session: 2026-05-11 corrective audit
 Stopped at: planning state corrected to match actual repository status
 Resume file: None
+
+## Repair Update 2026-06-11
+
+- Added `PHASE1_TO_PHASE4_REPAIR_PLAN.md` as the local execution plan.
+- Backend tests now pass locally: `18 passed, 1 skipped`.
+- Frontend `npm run build` now passes; the remaining warning is G6 bundle size.
+- `/input` local path flow now creates a `project_id`, stores a real diagram, and `/diagram/{project_id}` returns stored Mermaid/G6 data.
+- Manual HTTP verification against `D:\project\ReActFlow\backend` produced 103 nodes and 102 edges, with no legacy demo nodes such as `模块一`.
+- Parser now prefers Tree-sitter and falls back to deterministic regex summaries when local Tree-sitter grammar ABI versions are incompatible.
+- Semantic layer now has a DeepSeek text-provider path; real API verification requires `RUN_DEEPSEEK_INTEGRATION=1` and a valid `DEEPSEEK_API_KEY`.
+- Remaining work: browser-level Zip/GitHub/Gitee validation, Docker Compose recheck, richer symbol/call graph extraction, and optional Phase 5 search/file-tree/source-linking.

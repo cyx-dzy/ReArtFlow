@@ -45,6 +45,7 @@ Thumbs.db
 # Frontend (Node / Vite)
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
 node_modules/
 
 # Planning workspace (ignore all except key files)
@@ -60,4 +61,10 @@ config/llm.yaml
 backend/semantic/config/llm.yaml
 
 gitdiagram/
+
+# Local Codex skills / plugin artifacts
+.agents/skills/
+.codex/skills/
+.codex-skill-build/
+skills-lock.json
 # End of .gitignore
