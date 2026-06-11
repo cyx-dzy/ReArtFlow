@@ -7,12 +7,18 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import G6 from '@antv/g6'
 
 type GraphData = {
-  nodes: Array<{ id: string; label: string; type?: string }>
+  nodes: Array<{ id: string; label: string; type?: string; path?: string }>
   edges: Array<{ source: string; target: string; label?: string }>
 }
 
 const props = defineProps<{
   graphData: GraphData
+  highlightQuery?: string
+  selectedPath?: string
+}>()
+
+const emit = defineEmits<{
+  (event: 'nodeSelected', node: { id: string; label: string; type?: string; path?: string }): void
 }>()
 
 const container = ref<HTMLElement | null>(null)
@@ -73,9 +79,36 @@ function renderGraph() {
         }
       }
     })
+    graph.on('node:click', (event: any) => {
+      const model = event.item?.getModel?.()
+      if (model) {
+        emit('nodeSelected', {
+          id: String(model.id),
+          label: String(model.label || model.id),
+          type: model.type,
+          path: model.path
+        })
+      }
+    })
   }
 
-  const nodes = props.graphData.nodes.map((n) => ({ id: n.id, label: n.label }))
+  const query = (props.highlightQuery || '').trim().toLowerCase()
+  const nodes = props.graphData.nodes.map((n) => {
+    const haystack = `${n.label} ${n.path || ''} ${n.type || ''}`.toLowerCase()
+    const matched = query && haystack.includes(query)
+    const selected = props.selectedPath && n.path === props.selectedPath
+    return {
+      id: n.id,
+      label: n.label,
+      type: n.type,
+      path: n.path,
+      style: {
+        fill: selected ? '#dbeafe' : matched ? '#fef3c7' : '#ffffff',
+        stroke: selected ? '#1d4ed8' : matched ? '#b45309' : '#44546f',
+        lineWidth: selected || matched ? 2 : 1
+      }
+    }
+  })
   const edges = props.graphData.edges.map((e) => ({ source: e.source, target: e.target, label: e.label }))
   graph.data({ nodes, edges })
   graph.render()
@@ -93,6 +126,14 @@ watch(
     renderGraph()
   },
   { deep: true }
+)
+
+watch(
+  () => [props.highlightQuery, props.selectedPath],
+  async () => {
+    await nextTick()
+    renderGraph()
+  }
 )
 
 onBeforeUnmount(() => {

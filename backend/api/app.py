@@ -1,7 +1,6 @@
-"""
-FastAPI application entry point for ReArtFlow backend.
-Includes the input, semantic, parse, and diagram routers.
-"""
+"""FastAPI application entry point for ReActFlow backend."""
+
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +11,11 @@ from .routes.input import router as input_router
 from .routes.semantic import router as semantic_router
 
 app = FastAPI(title="ReArtFlow Backend")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 app.add_middleware(
     CORSMiddleware,

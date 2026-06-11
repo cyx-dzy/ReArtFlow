@@ -15,6 +15,19 @@ SUMMARY_LABELS = {
     "calls": "调用",
 }
 
+EXTENSION_LANGUAGE_MAP = {
+    ".py": "Python",
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".ts": "TypeScript",
+    ".tsx": "TSX",
+    ".java": "Java",
+    ".go": "Go",
+    ".rs": "Rust",
+    ".c": "C",
+    ".cpp": "C++",
+}
+
 
 def _safe_id(value: str) -> str:
     cleaned = []
@@ -101,4 +114,48 @@ def format_diagram_response(record: Dict[str, Any]) -> Dict[str, Any]:
         "errors": record.get("errors", []),
         "mermaid": to_mermaid(diagram),
         "g6": to_g6(diagram),
+    }
+
+
+def list_project_files(record: Dict[str, Any], limit: int = 1000) -> List[Dict[str, Any]]:
+    root = Path(record.get("source_path", "")).resolve()
+    if not root.is_dir():
+        return []
+
+    files: List[Dict[str, Any]] = []
+    for path in sorted(root.rglob("*")):
+        if len(files) >= limit:
+            break
+        if not path.is_file():
+            continue
+        if any(part in {".git", "node_modules", "__pycache__"} for part in path.parts):
+            continue
+        rel_path = path.relative_to(root).as_posix()
+        stat = path.stat()
+        files.append(
+            {
+                "path": rel_path,
+                "name": path.name,
+                "size": stat.st_size,
+                "language": EXTENSION_LANGUAGE_MAP.get(path.suffix.lower(), ""),
+            }
+        )
+    return files
+
+
+def read_project_file(record: Dict[str, Any], relative_path: str, max_bytes: int = 200_000) -> Dict[str, Any]:
+    root = Path(record.get("source_path", "")).resolve()
+    target = (root / relative_path).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise ValueError("File path is outside the project root")
+    if not target.is_file():
+        raise FileNotFoundError(relative_path)
+    content = target.read_bytes()[:max_bytes].decode("utf-8", errors="replace")
+    return {
+        "path": target.relative_to(root).as_posix(),
+        "content": content,
+        "truncated": target.stat().st_size > max_bytes,
+        "language": EXTENSION_LANGUAGE_MAP.get(target.suffix.lower(), ""),
     }

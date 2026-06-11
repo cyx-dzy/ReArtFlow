@@ -13,6 +13,8 @@ from backend.diagram.project_graph import (
     PROJECT_DIAGRAM_STORE,
     format_diagram_response,
     get_project_diagram,
+    list_project_files,
+    read_project_file,
     store_project_diagram,
 )
 
@@ -42,3 +44,25 @@ def store_diagram(project_id: str, payload: Dict):
         raise HTTPException(status_code=400, detail="Invalid diagram payload")
     record = store_project_diagram(project_id, payload, source_type="manual")
     return {"status": record["status"], "project_id": project_id}
+
+
+@router.get("/projects/{project_id}/files")
+def get_project_files(project_id: str):
+    record = get_project_diagram(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    return {"project_id": project_id, "files": list_project_files(record)}
+
+
+@router.get("/projects/{project_id}/files/content")
+def get_project_file_content(project_id: str, path: str):
+    record = get_project_diagram(project_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+    try:
+        content = read_project_file(record, path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"File not found: {path}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"project_id": project_id, **content}

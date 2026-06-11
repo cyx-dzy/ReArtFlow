@@ -33,8 +33,13 @@ from .prompt_templates import build_semantic_function_schema, build_semantic_mes
 
 class LLMClient:
     def __init__(self):
-        self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
-        default_model = "deepseek-v4-pro" if self.provider == "deepseek" else "gpt-4o-mini"
+        self.provider = os.getenv("LLM_PROVIDER", "qianwen").lower()
+        default_models = {
+            "deepseek": "deepseek-chat",
+            "qianwen": "qwen-plus",
+            "openai": "gpt-4o-mini",
+        }
+        default_model = default_models.get(self.provider, "gpt-4o-mini")
         self.model = os.getenv("LLM_MODEL", default_model)
         self.cache = SemanticCache()
 
@@ -42,7 +47,7 @@ class LLMClient:
         cache_key = {"provider": self.provider, "model": self.model, "code": code, "language": language}
         cached = self.cache.get(cache_key)
         if cached is not None:
-            return cached
+            return self._normalize_result(cached)
 
         if self.provider == "openai":
             result = self._call_openai(code, language)
@@ -53,7 +58,17 @@ class LLMClient:
         else:
             raise ValueError(f"Unsupported LLM provider: {self.provider}")
 
+        result = self._normalize_result(result)
         self.cache.set(cache_key, result)
+        return result
+
+    def _normalize_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(result.get("explanation"), str):
+            result["explanation"] = ""
+        if not isinstance(result.get("diagram"), dict):
+            result["diagram"] = {"nodes": [], "edges": []}
+        result["diagram"].setdefault("nodes", [])
+        result["diagram"].setdefault("edges", [])
         return result
 
     def _call_openai(self, code: str, language: str) -> Dict[str, Any]:
@@ -92,8 +107,13 @@ class LLMClient:
         )
         response.raise_for_status()
         payload = response.json()
-        arguments = payload["choices"][0]["message"]["function_call"]["arguments"]
-        return json.loads(arguments)
+        message = payload["choices"][0]["message"]
+        function_call = message.get("function_call") or {}
+        arguments = function_call.get("arguments")
+        if arguments:
+            return json.loads(arguments)
+        content = message.get("content", "")
+        return json.loads(content)
 
     def _call_deepseek(self, code: str, language: str) -> Dict[str, Any]:
         api_key = os.getenv("DEEPSEEK_API_KEY")

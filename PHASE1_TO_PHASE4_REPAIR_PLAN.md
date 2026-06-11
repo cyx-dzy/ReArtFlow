@@ -29,7 +29,7 @@
 
 3. 加入 DeepSeek 文本语义支持
    - 新增 `LLM_PROVIDER=deepseek`。
-   - 使用 `DEEPSEEK_API_KEY` 和 OpenAI-compatible DeepSeek API。
+- 使用 `DEEPSEEK_API_KEY` 和 OpenAI-compatible DeepSeek API，默认模型为 `deepseek-chat`。
    - 大模型只负责中文解释和结构化补充，不使用多模态。
    - 无 API key 或调用失败时，后端仍能用解析器结构图完成 Phase 4 图谱生成。
 

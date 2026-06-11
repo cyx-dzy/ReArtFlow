@@ -4,10 +4,10 @@ milestone: v1.0
 milestone_name: milestone
 status: in_progress
 stopped_at: phase 1-4 repair implementation (2026-06-11)
-last_updated: "2026-06-11T00:00:00+08:00"
-last_activity: Local input now generates retrievable real diagram data
+last_updated: "2026-06-12T00:00:00+08:00"
+last_activity: Phase 5 black-box feedback fixes: progress visibility, Qianwen switch, and cost control
 progress:
-  percent: 55
+  percent: 72
 ---
 
 # Project State
@@ -92,5 +92,25 @@ Resume file: None
 - `/input` local path flow now creates a `project_id`, stores a real diagram, and `/diagram/{project_id}` returns stored Mermaid/G6 data.
 - Manual HTTP verification against `D:\project\ReActFlow\backend` produced 103 nodes and 102 edges, with no legacy demo nodes such as `模块一`.
 - Parser now prefers Tree-sitter and falls back to deterministic regex summaries when local Tree-sitter grammar ABI versions are incompatible.
-- Semantic layer now has a DeepSeek text-provider path; real API verification requires `RUN_DEEPSEEK_INTEGRATION=1` and a valid `DEEPSEEK_API_KEY`.
+- Semantic layer now has a DeepSeek text-provider path; real API verification passed with `RUN_DEEPSEEK_INTEGRATION=1` using default model `deepseek-chat`.
 - Remaining work: browser-level Zip/GitHub/Gitee validation, Docker Compose recheck, richer symbol/call graph extraction, and optional Phase 5 search/file-tree/source-linking.
+
+## Phase 5 Update 2026-06-11
+
+- Added project file listing and source content APIs under `/projects/{project_id}/files`.
+- Frontend now includes a basic file list, file search, source viewer, diagram node click linkage, and search-based node highlighting.
+- Phase 5 intentionally avoids visual polish in this pass and focuses on black-box-testable functionality.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 20 passed, 1 skipped; `npm run build` -> passed.
+- Status: ready for user black-box testing of Phase 5 basics.
+
+## Phase 5 Black-Box Feedback Fix 2026-06-12
+
+- Added background input jobs: `POST /input/jobs`, `POST /input/zip/jobs`, and `GET /input/jobs/{job_id}`.
+- Frontend now submits through job endpoints and polls progress every second, showing stage, percent, and current message.
+- Backend now logs project input, parsing progress, LLM explanation selection, diagram generation, and job failures.
+- Default AI provider is now Qianwen (`LLM_PROVIDER=qianwen`, default model `qwen-plus`).
+- Qianwen real API integration test passed with user-provided key: `4 passed, 1 skipped`.
+- Added LLM cost controls: `LLM_MAX_FILES`, `LLM_MAX_CHARS_PER_FILE`, and `LLM_MAX_TOTAL_CHARS`.
+- Parser now ignores dependency/build directories such as `node_modules`, `.git`, `.venv`, `dist`, and `build`.
+- Large zip pre-check with AI disabled now parses 19 project files instead of 789 dependency-heavy files and generates 73 nodes / 72 edges.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 22 passed, 2 skipped; `npm run build` -> passed.

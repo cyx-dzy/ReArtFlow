@@ -59,6 +59,7 @@ node_modules/
 # Local config
 config/llm.yaml
 backend/semantic/config/llm.yaml
+start_reactflow_local.py
 
 gitdiagram/
 

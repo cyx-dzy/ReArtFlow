@@ -4,9 +4,9 @@
 
 - [ ] **Phase 1: Input & Security Handling** - Status: In Progress. Basic handlers exist, but route registration and end-to-end integration do not yet match the planned API.
 - [ ] **Phase 2: Multi-language Code Parsing** - Status: In Progress. Parser now prefers Tree-sitter and falls back to deterministic summaries when grammar ABI versions are incompatible.
-- [ ] **Phase 3: AI Semantic Understanding** - Status: In Progress. DeepSeek text-provider support exists; real API verification requires `RUN_DEEPSEEK_INTEGRATION=1` and a valid `DEEPSEEK_API_KEY`.
-- [ ] **Phase 4: Diagram Generation** - Status: In Progress. Local input now generates retrievable real G6/Mermaid diagram data; Zip/GitHub/Gitee manual browser verification remains.
-- [ ] **Phase 5: Frontend UI** - Status: In Progress. Frontend now has Zip/path/GitHub/Gitee input controls and renders backend graph data, but search, file tree, and source linkage are still pending.
+- [ ] **Phase 3: AI Semantic Understanding** - Status: In Progress. Qianwen is now the default provider with real API verification; DeepSeek remains configurable.
+- [ ] **Phase 4: Diagram Generation** - Status: In Progress. Local/Zip input now generates retrievable real G6/Mermaid diagram data; GitHub/Gitee manual browser verification remains.
+- [ ] **Phase 5: Frontend UI** - Status: Ready for Black-Box Retest. Frontend now has input controls, job progress polling, graph rendering, file list, basic search, node click linkage, and source viewing.
 - [ ] **Phase 6: Deployment & Operations** - Status: Pending. Health endpoint exists, but Docker/frontend delivery and scaling are not ready.
 
 ## Phase Details
@@ -93,3 +93,21 @@
 - `frontend/src/App.vue` now submits real inputs and renders returned G6 graph data.
 - Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 18 passed, 1 skipped; `npm run build` -> passed.
 - Manual HTTP verification produced a real graph from the backend directory: 103 nodes / 102 edges.
+
+## Phase 5 Update 2026-06-11
+
+- Added `/projects/{project_id}/files` and `/projects/{project_id}/files/content`.
+- Added frontend file list, search, selected source viewer, diagram node click linkage, and node highlighting by search/selection.
+- This pass intentionally does not polish page aesthetics; it is for basic functional black-box testing.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 20 passed, 1 skipped; `npm run build` -> passed.
+
+## Phase 5 Black-Box Feedback Fix 2026-06-12
+
+- Added async job endpoints for input parsing progress: `/input/jobs`, `/input/zip/jobs`, and `/input/jobs/{job_id}`.
+- Frontend now displays real-time progress while parsing large Zip projects.
+- Backend now logs input, parsing, AI, and diagram generation stages.
+- Default AI provider switched to Qianwen (`qwen-plus`); real Qianwen API test passed.
+- Token cost is controlled by dependency-directory filtering and LLM budgets (`LLM_MAX_FILES`, `LLM_MAX_CHARS_PER_FILE`, `LLM_MAX_TOTAL_CHARS`).
+- GitDiagram reference used: filter noisy repo content, generate from compact repository structure, persist artifacts, and enforce quota/budget controls.
+- Large `Chinese-Traditional-Culture.zip` pre-check now excludes `node_modules`, parses 19 project files, and generates 73 nodes / 72 edges.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 22 passed, 2 skipped; `npm run build` -> passed.
