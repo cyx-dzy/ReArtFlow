@@ -68,4 +68,5 @@ gitdiagram/
 .codex/skills/
 .codex-skill-build/
 skills-lock.json
+pet-runs/
 # End of .gitignore
