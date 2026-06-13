@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -11,11 +12,11 @@ from backend.semantic import to_g6, to_mermaid
 PROJECT_DIAGRAM_STORE: Dict[str, Dict[str, Any]] = {}
 
 MAX_GRAPH_GROUPS = 9
-MAX_GRAPH_NODES = 42
-MAX_GRAPH_EDGES = 72
-MAX_FILES_PER_GROUP = 6
-MAX_AI_NODES = 42
-MAX_AI_EDGES = 72
+MAX_GRAPH_FILE_NODES = int(os.getenv("DIAGRAM_MAX_FILE_NODES", "28"))
+MAX_FILES_PER_GROUP = int(os.getenv("DIAGRAM_MAX_FILES_PER_GROUP", "5"))
+MAX_GRAPH_EDGES = int(os.getenv("DIAGRAM_MAX_EDGES", "64"))
+MAX_AI_FILE_NODES = int(os.getenv("DIAGRAM_MAX_AI_FILE_NODES", str(MAX_GRAPH_FILE_NODES)))
+MAX_AI_EDGES = int(os.getenv("DIAGRAM_MAX_AI_EDGES", str(MAX_GRAPH_EDGES)))
 
 SUMMARY_LABELS = {
     "functions": "函数",
@@ -98,7 +99,6 @@ IGNORED_DIRECTORIES = {
 
 ALLOWED_SHAPES = {"hexagon", "box", "document", "database", "api", "ui", "config", "test", "service"}
 RELATION_LABELS = {
-    "contains": "包含",
     "routes_to": "路由到",
     "renders": "渲染",
     "reads_writes": "读写数据",
@@ -107,6 +107,8 @@ RELATION_LABELS = {
     "imports": "导入",
     "calls": "调用",
     "depends_on": "依赖",
+    "related": "关联",
+    "module_relates": "模块关联",
     "explains": "说明",
     "serves": "服务于",
     "stores": "存储",
@@ -140,6 +142,23 @@ def _top_level(rel_path: str) -> str:
     return parts[0]
 
 
+def _module_label(module: str) -> str:
+    lower = module.lower()
+    labels = {
+        "frontend": "前端交互层",
+        "backend": "后端解析服务",
+        "tests": "测试与验证",
+        "test": "测试与验证",
+        "docs": "文档说明",
+        "doc": "文档说明",
+        "config": "配置与构建",
+        "根目录": "配置与构建",
+    }
+    if lower in labels:
+        return labels[lower]
+    return f"{module} 模块"
+
+
 def _signal(parsed: Any) -> int:
     ast_summary = getattr(parsed, "ast_summary", {}) or {}
     return sum(int(value or 0) for value in ast_summary.values())
@@ -159,7 +178,12 @@ def _file_description(parsed: Any, explanation: Optional[str]) -> str:
         return explanation[:240]
     summary = getattr(parsed, "ast_summary", {}) or {}
     details = [f"{SUMMARY_LABELS.get(key, key)} {value}" for key, value in summary.items() if value]
-    return "，".join(details) if details else "项目主体源码文件"
+    if details:
+        return "，".join(details)
+    file_path = getattr(parsed, "path", "") or ""
+    language = getattr(parsed, "language", "") or "源码"
+    role, _, role_hint = _classify_file(Path(file_path).name, language)
+    return f"{role_hint}，{language} 文件" if role_hint else "项目主体源码文件"
 
 
 def _classify_file(rel_path: str, language: str) -> Tuple[str, str, str]:
@@ -225,7 +249,7 @@ def build_architecture_snapshot(
     files.sort(key=lambda item: (-sum(int(v or 0) for v in item["ast_summary"].values()), item["path"]))
     return {
         "goal": "为非技术人员解释跨语言项目结构",
-        "files": files[:80],
+        "files": files,
         "relation_types": RELATION_LABELS,
         "shape_types": {
             "database": "数据库、模型、Schema、迁移脚本",
@@ -251,9 +275,28 @@ def _rank_groups(parsed_list: Sequence[Any], root_path: Optional[str]) -> List[T
     ]
 
 
+def _select_representative_files(ranked_groups: Sequence[Tuple[str, List[Any]]]) -> Set[str]:
+    selected: Set[str] = set()
+    grouped = [(name, sorted(files, key=lambda parsed: (-_signal(parsed), getattr(parsed, "path", "")))) for name, files in ranked_groups]
+
+    for _, files in grouped:
+        for parsed in files[:MAX_FILES_PER_GROUP]:
+            if len(selected) >= MAX_GRAPH_FILE_NODES:
+                return selected
+            selected.add(getattr(parsed, "path", "") or "")
+
+    remaining = [parsed for _, files in grouped for parsed in files if (getattr(parsed, "path", "") or "") not in selected]
+    for parsed in sorted(remaining, key=lambda item: (-_signal(item), getattr(item, "path", ""))):
+        if len(selected) >= MAX_GRAPH_FILE_NODES:
+            break
+        selected.add(getattr(parsed, "path", "") or "")
+    return selected
+
+
 def _static_edges(nodes: List[Dict[str, Any]], group_ids: Set[str]) -> List[Dict[str, Any]]:
     edges: List[Dict[str, Any]] = []
-    file_nodes = [node for node in nodes if node.get("path") and node.get("id") not in group_ids]
+    module_nodes = [node for node in nodes if node.get("nodeKind") == "module"]
+    file_nodes = [node for node in nodes if node.get("isFile")]
     api_nodes = [node for node in file_nodes if node.get("shape") == "api"]
     ui_nodes = [node for node in file_nodes if node.get("shape") == "ui"]
     data_nodes = [node for node in file_nodes if node.get("shape") == "database"]
@@ -261,24 +304,40 @@ def _static_edges(nodes: List[Dict[str, Any]], group_ids: Set[str]) -> List[Dict
     test_nodes = [node for node in file_nodes if node.get("shape") == "test"]
     service_nodes = [node for node in file_nodes if node.get("shape") == "service"]
 
-    def add(source: str, target: str, relation_type: str, style: str = "solid") -> None:
+    def add(source: str, target: str, relation_type: str, style: str = "solid", label: str = "") -> None:
         if source == target or len(edges) >= MAX_GRAPH_EDGES:
             return
         edge = {
             "source": source,
             "target": target,
             "type": relation_type,
-            "label": RELATION_LABELS.get(relation_type, relation_type),
+            "label": label or RELATION_LABELS.get(relation_type, relation_type),
             "style": style,
         }
         if edge not in edges:
             edges.append(edge)
 
-    for node in nodes:
-        if node["id"] in group_ids:
-            add("project", node["id"], "contains")
-        elif node.get("groupId"):
-            add(node["groupId"], node["id"], "contains")
+    for source in module_nodes:
+        source_label = str(source.get("label") or source.get("id"))
+        for target in module_nodes:
+            if source["id"] == target["id"]:
+                continue
+            target_label = str(target.get("label") or target.get("id"))
+            if "前端" in source_label and ("后端" in target_label or "接口" in target_label):
+                source_hub = _group_hub(file_nodes, source["id"])
+                target_hub = _group_hub(file_nodes, target["id"])
+                if source_hub and target_hub:
+                    add(source_hub["id"], target_hub["id"], "module_relates", label="前端调用后端")
+            if "后端" in source_label and ("语义" in target_label or "图谱" in target_label):
+                source_hub = _group_hub(file_nodes, source["id"])
+                target_hub = _group_hub(file_nodes, target["id"])
+                if source_hub and target_hub:
+                    add(source_hub["id"], target_hub["id"], "module_relates", label="后端协作")
+            if "测试" in source_label and "后端" in target_label:
+                source_hub = _group_hub(file_nodes, source["id"])
+                target_hub = _group_hub(file_nodes, target["id"])
+                if source_hub and target_hub:
+                    add(source_hub["id"], target_hub["id"], "tests", style="dashed")
 
     for ui_node in ui_nodes[:8]:
         for api_node in api_nodes[:3]:
@@ -297,7 +356,79 @@ def _static_edges(nodes: List[Dict[str, Any]], group_ids: Set[str]) -> List[Dict
         for target in (service_nodes or api_nodes or file_nodes)[:2]:
             add(test_node["id"], target["id"], "tests", style="dashed")
 
+    _connect_isolated_files(edges, file_nodes)
     return edges[:MAX_GRAPH_EDGES]
+
+
+def _group_hub(file_nodes: Sequence[Dict[str, Any]], group_id: str) -> Optional[Dict[str, Any]]:
+    group_files = [node for node in file_nodes if node.get("groupId") == group_id]
+    if not group_files:
+        return None
+    priority = {"api": 0, "service": 1, "ui": 2, "database": 3, "config": 4, "test": 5}
+    return sorted(group_files, key=lambda node: (priority.get(str(node.get("shape")), 9), str(node.get("path"))))[0]
+
+
+def _connect_isolated_files(edges: List[Dict[str, Any]], file_nodes: Sequence[Dict[str, Any]]) -> None:
+    degree: Dict[str, int] = {node["id"]: 0 for node in file_nodes}
+
+    def recount_degree() -> None:
+        for node_id in degree:
+            degree[node_id] = 0
+        for edge in edges:
+            if edge.get("source") in degree:
+                degree[str(edge["source"])] += 1
+            if edge.get("target") in degree:
+                degree[str(edge["target"])] += 1
+
+    def add_related(source: str, target: str, relation_type: str = "related", label: str = "") -> bool:
+        if len(edges) >= MAX_GRAPH_EDGES or source == target:
+            return False
+        edge = {
+            "source": source,
+            "target": target,
+            "type": relation_type,
+            "label": label or RELATION_LABELS[relation_type],
+            "style": "dashed",
+        }
+        if edge in edges:
+            return False
+        edges.append(edge)
+        degree[source] = degree.get(source, 0) + 1
+        degree[target] = degree.get(target, 0) + 1
+        return True
+
+    recount_degree()
+
+    by_group: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for node in file_nodes:
+        by_group[str(node.get("groupId") or "")].append(node)
+
+    for group_files in by_group.values():
+        if len(group_files) < 2:
+            continue
+        hub = _group_hub(group_files, str(group_files[0].get("groupId") or ""))
+        if not hub:
+            continue
+        for node in group_files:
+            if len(edges) >= MAX_GRAPH_EDGES:
+                return
+            if node["id"] == hub["id"] or degree.get(node["id"], 0) > 0:
+                continue
+            add_related(hub["id"], node["id"])
+
+    primary_hub = _group_hub(file_nodes, "group_backend") or (file_nodes[0] if file_nodes else None)
+    if not primary_hub:
+        return
+    for node in file_nodes:
+        if len(edges) >= MAX_GRAPH_EDGES:
+            return
+        if degree.get(node["id"], 0) > 0:
+            continue
+        target = primary_hub
+        if target["id"] == node["id"]:
+            target = next((candidate for candidate in file_nodes if candidate["id"] != node["id"]), None)
+        if target:
+            add_related(node["id"], target["id"], "module_relates", "模块关联")
 
 
 def _build_static_diagram(
@@ -306,6 +437,7 @@ def _build_static_diagram(
     explanations: Dict[str, str],
 ) -> Dict[str, Any]:
     ranked_groups = _rank_groups(parsed_list, root_path)
+    selected_files = _select_representative_files(ranked_groups)
     group_meta: List[Dict[str, Any]] = []
     nodes: List[Dict[str, Any]] = [
         {
@@ -319,10 +451,8 @@ def _build_static_diagram(
     ]
 
     for group_index, (group_name, group_files) in enumerate(ranked_groups):
-        if len(nodes) >= MAX_GRAPH_NODES:
-            break
         group_id = f"group_{_safe_id(group_name)}"
-        group_label = f"{group_name} 模块"
+        group_label = _module_label(group_name)
         group_color = GROUP_PALETTES[group_index % len(GROUP_PALETTES)]
         group_description = _summary_text(group_files)
         group_meta.append({"id": group_id, "label": group_label, "description": group_description, "color": group_color})
@@ -333,31 +463,40 @@ def _build_static_diagram(
                 "type": "模块",
                 "description": group_description,
                 "groupId": group_id,
+                "module": group_label,
                 "path": "" if group_name == "根目录" else f"{group_name}/",
                 "shape": "box",
                 "color": group_color,
+                "isFile": False,
+                "nodeKind": "module",
             }
         )
 
         ranked_files = sorted(group_files, key=lambda parsed: (-_signal(parsed), getattr(parsed, "path", "")))
-        for parsed in ranked_files[:MAX_FILES_PER_GROUP]:
-            if len(nodes) >= MAX_GRAPH_NODES:
-                break
+        for parsed in ranked_files:
             file_path = getattr(parsed, "path", "") or ""
+            if file_path not in selected_files:
+                continue
             rel_path = _relative_path(file_path, root_path)
             language = getattr(parsed, "language", "") or "源码"
             role, shape, role_hint = _classify_file(rel_path, language)
+            description = _file_description(parsed, explanations.get(file_path)) or role_hint
             nodes.append(
                 {
                     "id": f"file_{group_index}_{_safe_id(rel_path)}",
                     "label": Path(rel_path).name,
+                    "filename": Path(rel_path).name,
                     "type": role,
                     "language": language,
-                    "description": _file_description(parsed, explanations.get(file_path)) or role_hint,
+                    "description": description,
                     "groupId": group_id,
+                    "module": group_label,
                     "path": rel_path,
                     "shape": shape,
                     "color": group_color,
+                    "isFile": True,
+                    "nodeKind": "file",
+                    "size": int(getattr(parsed, "size", 0) or 0),
                 }
             )
 
@@ -371,6 +510,10 @@ def _build_static_diagram(
             "source": "static",
             "relationship_mode": "heuristic",
             "audience": "non-technical",
+            "total_files": len(parsed_list),
+            "displayed_files": len([node for node in nodes if node.get("isFile")]),
+            "node_limit": MAX_GRAPH_FILE_NODES,
+            "edge_limit": MAX_GRAPH_EDGES,
         },
     }
 
@@ -406,16 +549,27 @@ def _normalize_ai_diagram(
     if not groups:
         groups = fallback.get("groups", [])[:MAX_GRAPH_GROUPS]
         group_ids = {group["id"] for group in groups}
+    else:
+        for fallback_group in fallback.get("groups", []):
+            fallback_group_id = str(fallback_group.get("id") or "")
+            if fallback_group_id and fallback_group_id not in group_ids and len(groups) < MAX_GRAPH_GROUPS:
+                groups.append(fallback_group)
+                group_ids.add(fallback_group_id)
 
     nodes: List[Dict[str, Any]] = []
     seen_ids: Set[str] = set()
+    file_node_count = 0
 
     def add_node(node: Dict[str, Any], index: int) -> None:
+        nonlocal file_node_count
         node_id = _safe_id(str(node.get("id") or node.get("path") or node.get("label") or f"node_{index}"))
-        if node_id in seen_ids or len(nodes) >= MAX_AI_NODES:
+        if node_id in seen_ids:
             return
         path = str(node.get("path") or "")
         if path and path not in allowed_paths and not path.endswith("/"):
+            return
+        is_file = bool(node.get("isFile", bool(path and not path.endswith("/"))))
+        if is_file and file_node_count >= MAX_AI_FILE_NODES:
             return
         fallback_node = fallback_by_path.get(path) or fallback_by_id.get(node_id) or {}
         group_id = _safe_id(str(node.get("groupId") or fallback_node.get("groupId") or ""))
@@ -429,15 +583,22 @@ def _normalize_ai_diagram(
             {
                 "id": node_id,
                 "label": str(node.get("label") or fallback_node.get("label") or path or node_id)[:48],
+                "filename": str(node.get("filename") or fallback_node.get("filename") or Path(path).name or ""),
                 "type": str(node.get("type") or fallback_node.get("type") or "文件")[:32],
                 "language": str(node.get("language") or fallback_node.get("language") or "")[:32],
-                "description": str(node.get("description") or fallback_node.get("description") or "")[:260],
+                "description": str(node.get("description") or fallback_node.get("description") or "项目主体源码文件")[:260],
                 "groupId": group_id,
+                "module": str(node.get("module") or fallback_node.get("module") or "")[:48],
                 "path": path,
                 "shape": shape,
                 "color": color,
+                "isFile": bool(node.get("isFile", fallback_node.get("isFile", is_file))),
+                "nodeKind": str(node.get("nodeKind") or fallback_node.get("nodeKind") or ("file" if path else "module")),
+                "size": int(node.get("size") or fallback_node.get("size") or 0),
             }
         )
+        if is_file:
+            file_node_count += 1
         seen_ids.add(node_id)
 
     add_node(
@@ -471,6 +632,10 @@ def _normalize_ai_diagram(
         if isinstance(node, dict):
             add_node(node, index)
 
+    for fallback_node in fallback.get("nodes", []):
+        if fallback_node.get("path") and fallback_node.get("path") in allowed_paths:
+            add_node(fallback_node, len(nodes))
+
     if len(nodes) < 2:
         return None
 
@@ -478,8 +643,16 @@ def _normalize_ai_diagram(
     edges: List[Dict[str, Any]] = []
     seen_edges: Set[Tuple[str, str, str]] = set()
 
-    def add_edge(source: str, target: str, relation_type: str, label: str = "", description: str = "") -> None:
-        if source not in valid_ids or target not in valid_ids or source == target or len(edges) >= MAX_AI_EDGES:
+    def add_edge(
+        source: str,
+        target: str,
+        relation_type: str,
+        label: str = "",
+        description: str = "",
+        *,
+        required: bool = False,
+    ) -> None:
+        if source not in valid_ids or target not in valid_ids or source == target or (not required and len(edges) >= MAX_AI_EDGES):
             return
         key = (source, target, relation_type)
         if key in seen_edges:
@@ -496,13 +669,6 @@ def _normalize_ai_diagram(
         )
         seen_edges.add(key)
 
-    for group_id in sorted(group_ids):
-        add_edge("project", group_id, "contains")
-    for node in nodes:
-        group_id = node.get("groupId")
-        if group_id and node["id"] != group_id:
-            add_edge(group_id, node["id"], "contains")
-
     for edge in ai_diagram.get("edges") or []:
         if not isinstance(edge, dict) or len(edges) >= MAX_AI_EDGES:
             continue
@@ -511,6 +677,8 @@ def _normalize_ai_diagram(
         if source not in valid_ids or target not in valid_ids or source == target:
             continue
         relation_type = str(edge.get("type") or "depends_on")
+        if relation_type == "contains":
+            continue
         label = str(edge.get("label") or RELATION_LABELS.get(relation_type, relation_type))[:32]
         add_edge(source, target, relation_type, label=label, description=str(edge.get("description") or ""))
 
@@ -526,6 +694,10 @@ def _normalize_ai_diagram(
             "relationship_mode": "qianwen" if ai_diagram else "static",
             "audience": "non-technical",
             "summary": str(ai_diagram.get("summary") or "")[:500],
+            "total_files": len(allowed_paths),
+            "displayed_files": len([node for node in nodes if node.get("isFile")]),
+            "node_limit": MAX_AI_FILE_NODES,
+            "edge_limit": MAX_AI_EDGES,
         },
     }
 

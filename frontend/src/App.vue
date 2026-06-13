@@ -1,47 +1,26 @@
 <template>
   <main class="app-shell">
-    <section class="hero-panel" aria-labelledby="app-title">
-      <div class="hero-copy">
-        <p class="eyebrow">Code structure atlas</p>
+    <section class="top-workbench" aria-labelledby="app-title">
+      <div class="brand-block">
+        <p class="eyebrow">跨语言项目结构图谱</p>
         <h1 id="app-title">ReActFlow</h1>
-        <p class="hero-summary">
-          上传或指向一个项目，生成面向非技术人员的中文代码结构图，并在图谱旁边快速预览对应源码。
-        </p>
       </div>
 
-      <div class="status-strip" aria-label="当前项目状态">
-        <div class="status-metric">
-          <span>项目</span>
-          <strong>{{ projectId ? '已载入' : '待解析' }}</strong>
+      <form class="input-console" aria-label="项目解析" @submit.prevent="submit">
+        <div class="mode-tabs" role="tablist" aria-label="输入方式">
+          <button
+            v-for="option in modeOptions"
+            :key="option.value"
+            type="button"
+            :class="{ active: mode === option.value }"
+            :aria-selected="mode === option.value"
+            role="tab"
+            @click="mode = option.value"
+          >
+            {{ option.label }}
+          </button>
         </div>
-        <div class="status-metric">
-          <span>节点</span>
-          <strong>{{ graphData?.nodes.length ?? 0 }}</strong>
-        </div>
-        <div class="status-metric">
-          <span>文件</span>
-          <strong>{{ files.length }}</strong>
-        </div>
-      </div>
-    </section>
 
-    <section class="control-panel" aria-label="项目解析">
-      <div class="mode-tabs" role="tablist" aria-label="输入方式">
-        <button
-          v-for="option in modeOptions"
-          :key="option.value"
-          type="button"
-          :class="{ active: mode === option.value }"
-          :aria-selected="mode === option.value"
-          role="tab"
-          @click="mode = option.value"
-        >
-          <span>{{ option.label }}</span>
-          <small>{{ option.hint }}</small>
-        </button>
-      </div>
-
-      <form class="input-row" @submit.prevent="submit">
         <label class="input-field">
           <span>{{ inputLabel }}</span>
           <input
@@ -58,23 +37,22 @@
             autocomplete="off"
           />
         </label>
+
         <button class="primary-action" type="submit" :disabled="loading">
-          {{ loading ? '解析中' : '开始解析' }}
+          {{ loading ? '解析中' : '生成图谱' }}
         </button>
       </form>
+    </section>
 
-      <div v-if="job" class="progress-panel" aria-live="polite">
-        <div class="progress-line">
-          <div>
-            <span>{{ stageLabel(job.stage) }}</span>
-            <strong>{{ job.message }}</strong>
-          </div>
-          <b>{{ job.progress }}%</b>
+    <section v-if="job || projectId || error" class="status-row" aria-live="polite">
+      <div v-if="job" class="progress-panel">
+        <div>
+          <span>{{ stageLabel(job.stage) }}</span>
+          <strong>{{ job.message }}</strong>
         </div>
         <progress :value="job.progress" max="100"></progress>
-        <small>{{ job.current }} / {{ job.total }} 个步骤</small>
+        <b>{{ job.progress }}%</b>
       </div>
-
       <div v-if="projectId" class="project-token">
         <span>Project ID</span>
         <code>{{ projectId }}</code>
@@ -82,82 +60,154 @@
       <p v-if="error" class="error" role="alert">{{ error }}</p>
     </section>
 
-    <section class="workspace-grid" aria-label="代码图谱工作区">
-      <aside class="file-panel" aria-label="文件索引">
-        <div class="panel-titlebar">
-          <div>
-            <span>文件索引</span>
-            <strong>{{ filteredFiles.length }} / {{ files.length }}</strong>
-          </div>
-        </div>
-        <label class="file-search">
-          <span>搜索文件</span>
-          <input v-model="fileQuery" type="search" placeholder="文件名、路径或语言" />
-        </label>
-        <div class="file-list">
-          <button
-            v-for="file in filteredFiles"
-            :key="file.path"
-            type="button"
-            :class="{ selected: selectedPath === file.path }"
-            @click="selectFile(file.path)"
-          >
-            <strong>{{ file.name }}</strong>
-            <span>{{ file.path }}</span>
-            <small>{{ file.language || 'unknown' }} · {{ formatSize(file.size) }}</small>
-          </button>
-          <div v-if="!files.length" class="empty-file-list">
-            项目解析完成后会在这里显示文件。
-          </div>
-          <div v-else-if="!filteredFiles.length" class="empty-file-list">
-            没有匹配的文件。
-          </div>
-        </div>
-      </aside>
-
-      <section class="diagram-panel" aria-label="项目结构图">
-        <div class="panel-titlebar">
+    <section class="graph-workspace" :class="{ 'drawer-open': sourceDrawerOpen }" aria-label="代码图谱工作区">
+      <section class="diagram-stage" aria-label="项目结构图">
+        <div class="stage-toolbar">
           <div>
             <span>结构图谱</span>
             <strong>{{ diagramSummary }}</strong>
           </div>
-          <small>可拖拽、缩放，点击节点可打开源码。</small>
+          <div class="toolbar-actions">
+            <label class="drag-toggle">
+              <input v-model="nodeDragEnabled" type="checkbox" />
+              <span>节点拖拽</span>
+            </label>
+            <button type="button" class="ghost-action" @click="searchOpen = true">
+              搜索文件
+            </button>
+            <button type="button" class="ghost-action" :disabled="!selectedPath" @click="sourceDrawerOpen = !sourceDrawerOpen">
+              {{ sourceDrawerOpen ? '收起源码' : '源码预览' }}
+            </button>
+          </div>
         </div>
+
         <Diagram
           v-if="graphData"
           :graphData="graphData"
           :selectedPath="selectedPath"
           :highlightQuery="fileQuery"
+          :nodeDragEnabled="nodeDragEnabled"
           @nodeSelected="onNodeSelected"
         />
         <div v-else class="empty-state">
-          <strong>等待项目输入</strong>
-          <span>提交 Zip、本地路径或仓库地址后，这里会展示后端生成的代码结构图。</span>
+          <strong>选择项目来源后生成结构图谱</strong>
+          <span>Zip、本地目录、GitHub 和 Gitee 都可输入；无 API Key 时也会生成静态兜底图谱。</span>
         </div>
       </section>
 
-      <section class="source-panel" aria-label="源码预览">
+      <aside class="source-drawer" :class="{ open: sourceDrawerOpen }" aria-label="源码预览">
+        <button
+          type="button"
+          class="drawer-handle"
+          aria-label="完整显示源码预览"
+          title="完整显示源码预览"
+          @click="sourcePreviewMaximized = true"
+        >
+          ⤢
+        </button>
         <div class="source-header">
           <div>
             <span>源码预览</span>
             <strong>{{ selectedPath || '未选择文件' }}</strong>
           </div>
-          <div class="source-badges">
-            <span v-if="sourceLanguage">{{ sourceLanguage }}</span>
-            <span v-if="sourceTruncated">已截断</span>
-            <span v-if="highlightedLanguage">{{ highlightedLanguage }}</span>
+          <button type="button" class="icon-action" aria-label="关闭源码预览" @click="sourceDrawerOpen = false">
+            ×
+          </button>
+        </div>
+        <div class="source-badges">
+          <span v-if="sourceLanguage">{{ sourceLanguage }}</span>
+          <span v-if="sourceTruncated">已截断</span>
+          <span v-if="highlightedLanguage">{{ highlightedLanguage }}</span>
+        </div>
+        <dl v-if="selectedNodeMeta" class="source-meta">
+          <div>
+            <dt>说明</dt>
+            <dd>{{ selectedNodeMeta.description || '项目主体源码文件' }}</dd>
+          </div>
+          <div>
+            <dt>模块</dt>
+            <dd>{{ selectedNodeMeta.module || selectedNodeMeta.groupId || '未分组' }}</dd>
+          </div>
+          <div>
+            <dt>大小</dt>
+            <dd>{{ formatSize(selectedNodeMeta.size || 0) }}</dd>
+          </div>
+        </dl>
+        <div class="code-view">
+          <div class="code-rows" :class="highlightClass">
+            <div v-for="(line, index) in highlightedRows" :key="index" class="code-row">
+              <span class="line-number">{{ index + 1 }}</span>
+              <code v-html="line || '&nbsp;'"></code>
+            </div>
           </div>
         </div>
-        <pre class="code-view"><code :class="highlightClass" v-html="highlightedSource"></code></pre>
-      </section>
+      </aside>
     </section>
+
+    <div v-if="sourcePreviewMaximized" class="source-fullscreen" role="dialog" aria-modal="true" aria-label="完整源码预览">
+      <section class="source-fullscreen-panel">
+        <div class="source-header">
+          <div>
+            <span>完整源码预览</span>
+            <strong>{{ selectedPath || '未选择文件' }}</strong>
+          </div>
+          <button type="button" class="icon-action" aria-label="关闭完整源码预览" @click="sourcePreviewMaximized = false">
+            ×
+          </button>
+        </div>
+        <div class="source-badges">
+          <span v-if="sourceLanguage">{{ sourceLanguage }}</span>
+          <span v-if="sourceTruncated">已截断</span>
+          <span v-if="highlightedLanguage">{{ highlightedLanguage }}</span>
+        </div>
+        <div class="code-view fullscreen-code">
+          <div class="code-rows" :class="highlightClass">
+            <div v-for="(line, index) in highlightedRows" :key="index" class="code-row">
+              <span class="line-number">{{ index + 1 }}</span>
+              <code v-html="line || '&nbsp;'"></code>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div v-if="searchOpen" class="search-overlay" role="dialog" aria-modal="true" aria-label="文件搜索">
+      <div class="search-panel">
+        <div class="search-header">
+          <div>
+            <span>文件搜索</span>
+            <strong>{{ filteredFiles.length }} / {{ files.length }}</strong>
+          </div>
+          <button type="button" class="icon-action" aria-label="关闭文件搜索" @click="searchOpen = false">×</button>
+        </div>
+        <label class="search-field">
+          <span>搜索文件名、路径、语言或模块</span>
+          <input ref="searchInput" v-model="fileQuery" type="search" placeholder="例如 App.vue、backend、Python" />
+        </label>
+        <div class="result-list">
+          <button
+            v-for="file in filteredFiles"
+            :key="file.path"
+            type="button"
+            :class="{ selected: selectedPath === file.path }"
+            @click="selectFileFromSearch(file.path)"
+          >
+            <strong>{{ file.name }}</strong>
+            <span>{{ file.path }}</span>
+            <small>{{ file.language || 'unknown' }} · {{ formatSize(file.size) }}</small>
+          </button>
+          <p v-if="!files.length">项目解析完成后可以在这里搜索所有源码文件。</p>
+          <p v-else-if="!filteredFiles.length">没有匹配的文件。</p>
+        </div>
+      </div>
+    </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import hljs from 'highlight.js/lib/common'
-import 'highlight.js/styles/github-dark.css'
+import 'highlight.js/styles/atom-one-dark.css'
 import Diagram from './components/Diagram.vue'
 
 type InputMode = 'zip' | 'local' | 'github' | 'gitee'
@@ -167,15 +217,20 @@ type GraphData = {
   nodes: Array<{
     id: string
     label: string
+    filename?: string
     type?: string
     path?: string
     description?: string
     shape?: string
     color?: string
     groupId?: string
+    module?: string
     language?: string
+    isFile?: boolean
+    nodeKind?: string
+    size?: number
   }>
-  edges: Array<{ source: string; target: string; label?: string; type?: string; style?: string }>
+  edges: Array<{ source: string; target: string; label?: string; type?: string; relation?: string; style?: string }>
 }
 
 type ProjectFile = {
@@ -204,11 +259,11 @@ type InputJob = {
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
-const modeOptions: Array<{ value: InputMode; label: string; hint: string }> = [
-  { value: 'zip', label: 'Zip', hint: '上传压缩包' },
-  { value: 'local', label: '本地路径', hint: '后端可访问' },
-  { value: 'github', label: 'GitHub', hint: '公开仓库' },
-  { value: 'gitee', label: 'Gitee', hint: '公开仓库' }
+const modeOptions: Array<{ value: InputMode; label: string }> = [
+  { value: 'zip', label: 'Zip' },
+  { value: 'local', label: '本地路径' },
+  { value: 'github', label: 'GitHub' },
+  { value: 'gitee', label: 'Gitee' }
 ]
 
 const mode = ref<InputMode>('zip')
@@ -224,19 +279,26 @@ const selectedPath = ref('')
 const sourceContent = ref('')
 const sourceLanguage = ref('')
 const sourceTruncated = ref(false)
+const sourceDrawerOpen = ref(false)
+const sourcePreviewMaximized = ref(false)
+const nodeDragEnabled = ref(false)
+const selectedNodeMeta = ref<GraphData['nodes'][number] | null>(null)
+const searchOpen = ref(false)
+const searchInput = ref<HTMLInputElement | null>(null)
 const job = ref<InputJob | null>(null)
 
 const inputLabel = computed(() => (mode.value === 'zip' ? '选择项目 Zip 包' : '输入项目来源'))
 
 const placeholder = computed(() => {
-  if (mode.value === 'local') return '例如 D:\\project\\ReActFlow\\backend'
+  if (mode.value === 'local') return '例如 D:\\project\\ReActFlow'
   if (mode.value === 'github') return 'https://github.com/owner/repo'
   return 'https://gitee.com/owner/repo'
 })
 
 const diagramSummary = computed(() => {
   if (!graphData.value) return '尚未生成'
-  return `${graphData.value.nodes.length} 个节点 · ${graphData.value.edges.length} 条关系`
+  const fileNodes = graphData.value.nodes.filter((node) => node.isFile || node.path)
+  return `${fileNodes.length} 个文件节点 · ${graphData.value.edges.length} 条关系`
 })
 
 const filteredFiles = computed(() => {
@@ -251,7 +313,7 @@ const highlightedLanguage = computed(() => normalizeLanguage(sourceLanguage.valu
 const highlightClass = computed(() => (highlightedLanguage.value ? `language-${highlightedLanguage.value}` : 'language-plaintext'))
 
 const highlightedSource = computed(() => {
-  const code = sourceContent.value || '从图谱节点或文件索引中选择一个文件。'
+  const code = sourceContent.value || '从图谱节点或文件搜索中选择一个文件。'
   const language = highlightedLanguage.value
   try {
     if (language && hljs.getLanguage(language)) {
@@ -261,6 +323,14 @@ const highlightedSource = computed(() => {
   } catch {
     return escapeHtml(code)
   }
+})
+
+const highlightedRows = computed(() => highlightedSource.value.split(/\r?\n/))
+
+watch(searchOpen, async (open) => {
+  if (!open) return
+  await nextTick()
+  searchInput.value?.focus()
 })
 
 function onFileChange(event: Event) {
@@ -293,6 +363,8 @@ function resetProjectView() {
   sourceContent.value = ''
   sourceLanguage.value = ''
   sourceTruncated.value = false
+  selectedNodeMeta.value = null
+  sourceDrawerOpen.value = false
 }
 
 async function submitZipJob() {
@@ -355,44 +427,50 @@ async function applyJobResult(doneJob: InputJob) {
 
 async function loadDiagram(id: string) {
   const response = await fetch(`${API_BASE}/diagram/${id}`)
-  if (!response.ok) {
-    const message = await readError(response)
-    throw new Error(message)
-  }
+  if (!response.ok) throw new Error(await readError(response))
   const diagram = await response.json()
   graphData.value = diagram.g6
 }
 
 async function loadFiles(id: string) {
   const response = await fetch(`${API_BASE}/projects/${id}/files`)
-  if (!response.ok) {
-    const message = await readError(response)
-    throw new Error(message)
-  }
+  if (!response.ok) throw new Error(await readError(response))
   const payload = await response.json()
   files.value = payload.files || []
 }
 
 async function selectFile(path: string) {
   if (!projectId.value) return
+  selectedNodeMeta.value = findGraphNode(path)
   const response = await fetch(`${API_BASE}/projects/${projectId.value}/files/content?path=${encodeURIComponent(path)}`)
-  if (!response.ok) {
-    const message = await readError(response)
-    throw new Error(message)
-  }
+  if (!response.ok) throw new Error(await readError(response))
   const payload = await response.json()
   selectedPath.value = payload.path
   sourceContent.value = payload.content
   sourceLanguage.value = payload.language || ''
   sourceTruncated.value = Boolean(payload.truncated)
+  sourceDrawerOpen.value = true
 }
 
-function onNodeSelected(node: { path?: string }) {
-  if (node.path) {
+function selectFileFromSearch(path: string) {
+  fileQuery.value = path
+  searchOpen.value = false
+  selectFile(path).catch((exc) => {
+    error.value = exc instanceof Error ? exc.message : String(exc)
+  })
+}
+
+function onNodeSelected(node: GraphData['nodes'][number]) {
+  if (node.path && !node.path.endsWith('/')) {
+    selectedNodeMeta.value = node
     selectFile(node.path).catch((exc) => {
       error.value = exc instanceof Error ? exc.message : String(exc)
     })
   }
+}
+
+function findGraphNode(path: string) {
+  return graphData.value?.nodes.find((node) => node.path === path) || null
 }
 
 function stageLabel(stage: string) {
@@ -476,7 +554,15 @@ async function readError(response: Response) {
 
 :global(body) {
   margin: 0;
-  background: #0f172a;
+  background: #eef5fb;
+}
+
+:global(html),
+:global(body),
+:global(#app) {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 :global(button),
@@ -485,413 +571,439 @@ async function readError(response: Response) {
 }
 
 .app-shell {
+  width: 100%;
+  max-width: 100%;
   min-height: 100vh;
-  color: #e5eef8;
+  overflow-x: hidden;
+  color: #172033;
   background:
-    radial-gradient(circle at 18% 2%, rgba(45, 212, 191, 0.16), transparent 28rem),
-    linear-gradient(135deg, #111827 0%, #162032 48%, #0f172a 100%);
+    radial-gradient(circle at 15% 0%, rgba(14, 165, 233, 0.14), transparent 30rem),
+    linear-gradient(180deg, #f8fbff 0%, #eef5fb 100%);
   font-family: "Inter", "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
-  padding: 24px;
+  padding: 16px;
 }
 
-.hero-panel,
-.control-panel,
-.workspace-grid {
-  width: min(1760px, 100%);
+.top-workbench,
+.status-row,
+.graph-workspace {
+  width: min(1800px, 100%);
   margin: 0 auto;
 }
 
-.hero-panel {
+.top-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 16px;
   align-items: end;
-  padding: 8px 0 22px;
+}
+
+.brand-block {
+  display: grid;
+  gap: 3px;
 }
 
 .eyebrow,
-.panel-titlebar span,
-.source-header span {
-  color: #7dd3fc;
+.stage-toolbar span,
+.source-header span,
+.search-header span {
+  color: #0f766e;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
-  text-transform: uppercase;
 }
 
 h1 {
-  margin: 4px 0;
-  font-size: clamp(34px, 5vw, 64px);
-  line-height: 0.95;
-}
-
-.hero-summary {
-  max-width: 760px;
   margin: 0;
-  color: #b8c5d6;
-  font-size: 17px;
-  line-height: 1.7;
+  color: #0f172a;
+  font-size: 32px;
+  line-height: 1;
 }
 
-.status-strip {
+.input-console {
   display: grid;
-  grid-template-columns: repeat(3, minmax(108px, 1fr));
+  grid-template-columns: 320px minmax(260px, 1fr) 112px;
   gap: 10px;
-}
-
-.status-metric {
-  min-height: 72px;
-  padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  align-items: end;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 8px;
-  background: rgba(15, 23, 42, 0.72);
-}
-
-.status-metric span,
-.project-token span,
-.progress-panel small,
-.panel-titlebar small {
-  color: #93a4b8;
-  font-size: 12px;
-}
-
-.status-metric strong {
-  display: block;
-  margin-top: 8px;
-  color: #f8fafc;
-  font-size: 22px;
-}
-
-.control-panel {
-  display: grid;
-  gap: 16px;
-  padding: 18px;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.82);
-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(14px);
 }
 
 .mode-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .mode-tabs button,
 .primary-action,
-.file-list button {
-  border: 1px solid rgba(148, 163, 184, 0.28);
+.ghost-action,
+.icon-action,
+.result-list button {
+  min-height: 44px;
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 
 .mode-tabs button {
-  display: grid;
-  gap: 4px;
-  min-height: 64px;
-  padding: 12px 14px;
-  color: #dbeafe;
-  text-align: left;
-  background: rgba(30, 41, 59, 0.68);
+  border: 1px solid #d9e4ef;
+  color: #475569;
+  background: #f8fafc;
 }
 
-.mode-tabs button small {
-  color: #94a3b8;
-}
-
-.mode-tabs button:hover,
-.mode-tabs button.active {
-  border-color: #2dd4bf;
-  background: rgba(20, 184, 166, 0.13);
-}
-
-.mode-tabs button:focus-visible,
-.primary-action:focus-visible,
-.file-list button:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgba(45, 212, 191, 0.35);
-  outline-offset: 2px;
-}
-
-.input-row {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 150px;
-  gap: 12px;
-  align-items: end;
+.mode-tabs button.active,
+.mode-tabs button:hover {
+  border-color: #0ea5e9;
+  color: #075985;
+  background: #e0f2fe;
 }
 
 .input-field,
-.file-search {
+.search-field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .input-field span,
-.file-search span {
-  color: #cbd5e1;
-  font-size: 13px;
+.search-field span {
+  color: #64748b;
+  font-size: 12px;
   font-weight: 700;
 }
 
 input {
-  min-height: 46px;
   width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  padding: 0 14px;
-  color: #f8fafc;
-  background: rgba(2, 6, 23, 0.58);
+  padding: 0 12px;
+  color: #172033;
+  background: #ffffff;
 }
 
 input[type="file"] {
-  padding: 10px 14px;
-  color: #cbd5e1;
+  padding: 9px 12px;
 }
 
-input::placeholder {
-  color: #64748b;
+input:focus-visible,
+button:focus-visible {
+  outline: 3px solid rgba(14, 165, 233, 0.28);
+  outline-offset: 2px;
 }
 
 .primary-action {
-  min-height: 46px;
-  color: #042f2e;
+  border: 1px solid #14b8a6;
+  color: #ffffff;
   font-weight: 800;
-  background: #5eead4;
-  border-color: #5eead4;
+  background: linear-gradient(135deg, #14b8a6, #0ea5e9);
+  box-shadow: 0 12px 22px rgba(14, 165, 233, 0.18);
 }
 
-.primary-action:hover {
+.primary-action:hover,
+.ghost-action:hover,
+.result-list button:hover {
   transform: translateY(-1px);
 }
 
-.primary-action:disabled {
-  cursor: wait;
-  opacity: 0.58;
+.primary-action:disabled,
+.ghost-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
   transform: none;
 }
 
-.progress-panel {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid rgba(251, 191, 36, 0.28);
-  border-radius: 8px;
-  background: rgba(120, 53, 15, 0.18);
-}
-
-.progress-line {
+.status-row {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding-top: 12px;
 }
 
-.progress-line div {
+.progress-panel,
+.project-token {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.progress-panel div {
   display: grid;
-  gap: 3px;
+  gap: 2px;
+  min-width: 220px;
 }
 
-.progress-line span {
-  color: #fbbf24;
+.progress-panel span,
+.project-token span {
+  color: #64748b;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.progress-line strong {
-  color: #fff7ed;
+.progress-panel strong {
+  color: #172033;
+  font-size: 13px;
 }
 
-.progress-line b {
-  color: #fde68a;
-  font-size: 20px;
+.progress-panel b {
+  color: #0f766e;
 }
 
 progress {
-  width: 100%;
-  height: 10px;
+  width: 160px;
+  height: 8px;
   overflow: hidden;
   border: 0;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.65);
 }
 
 progress::-webkit-progress-bar {
-  background: rgba(15, 23, 42, 0.65);
+  background: #dbeafe;
 }
 
 progress::-webkit-progress-value {
   border-radius: 999px;
-  background: linear-gradient(90deg, #fbbf24, #2dd4bf);
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
 }
 
-.project-token {
+.project-token code {
+  color: #075985;
+  font-weight: 700;
+}
+
+.error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.graph-workspace {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: calc(100vh - 116px);
+  padding-top: 8px;
+}
+
+.diagram-stage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: calc(100vh - 128px);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.11);
+}
+
+.stage-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  min-height: 58px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.stage-toolbar > div:first-child,
+.source-header > div,
+.search-header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.stage-toolbar strong,
+.source-header strong,
+.search-header strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.toolbar-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
 
-.project-token code {
-  color: #ccfbf1;
-  background: rgba(20, 184, 166, 0.1);
-  border: 1px solid rgba(45, 212, 191, 0.26);
-  border-radius: 6px;
-  padding: 4px 8px;
+.ghost-action {
+  border: 1px solid #cbd5e1;
+  padding: 0 14px;
+  color: #334155;
+  font-weight: 700;
+  background: #ffffff;
 }
 
-.error {
-  margin: 0;
-  color: #fecaca;
-}
-
-.workspace-grid {
-  display: grid;
-  grid-template-columns: minmax(250px, 320px) minmax(420px, 1fr) minmax(320px, 420px);
-  gap: 16px;
-  padding-top: 16px;
-  align-items: start;
-}
-
-.file-panel,
-.diagram-panel,
-.source-panel {
-  min-width: 0;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 8px;
-  background: rgba(15, 23, 42, 0.74);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.2);
-}
-
-.file-panel,
-.source-panel {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  height: 677px;
-  overflow: hidden;
-}
-
-.diagram-panel {
-  overflow: hidden;
-}
-
-.panel-titlebar,
-.source-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
+.drag-toggle {
+  display: inline-flex;
+  gap: 8px;
   align-items: center;
-  padding: 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  min-height: 44px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+  background: #ffffff;
 }
 
-.panel-titlebar > div,
-.source-header > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.panel-titlebar strong,
-.source-header strong {
-  color: #f8fafc;
-  font-size: 15px;
-}
-
-.file-search {
-  padding: 14px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
-}
-
-.file-list {
-  min-height: 0;
-  overflow: auto;
-  padding: 10px;
-}
-
-.file-list button {
-  display: grid;
-  gap: 5px;
-  width: 100%;
-  margin-bottom: 8px;
-  padding: 11px;
-  color: #dbeafe;
-  text-align: left;
-  background: rgba(30, 41, 59, 0.56);
-}
-
-.file-list button:hover,
-.file-list button.selected {
-  border-color: #5eead4;
-  background: rgba(20, 184, 166, 0.13);
-}
-
-.file-list button strong,
-.file-list button span,
-.file-list button small {
-  overflow-wrap: anywhere;
-}
-
-.file-list button span {
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.file-list button small {
-  color: #7dd3fc;
-  font-size: 11px;
-}
-
-.empty-file-list,
-.empty-state {
-  color: #94a3b8;
-  text-align: center;
-}
-
-.empty-file-list {
-  padding: 28px 12px;
-  line-height: 1.6;
+.drag-toggle input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: #0ea5e9;
 }
 
 .empty-state {
+  flex: 1;
   display: grid;
   place-items: center;
-  min-height: 620px;
-  padding: 24px;
+  min-height: calc(100vh - 188px);
+  padding: 28px;
+  color: #64748b;
+  text-align: center;
+  background:
+    linear-gradient(rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.1) 1px, transparent 1px),
+    #f8fbff;
+  background-size: 28px 28px;
 }
 
 .empty-state strong {
   display: block;
   margin-bottom: 8px;
-  color: #e2e8f0;
-  font-size: 20px;
+  color: #0f172a;
+  font-size: 22px;
 }
 
-.source-panel {
-  grid-template-rows: auto minmax(0, 1fr);
+.source-drawer {
+  position: absolute;
+  top: 12px;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  width: min(460px, calc(100vw - 32px));
+  height: calc(72vh + 58px);
+  min-height: 698px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 8px;
+  background: #282c34;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(32px);
+  visibility: hidden;
+  transition: transform 220ms ease, opacity 180ms ease, visibility 180ms ease;
+}
+
+.source-drawer.open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.drawer-handle {
+  position: absolute;
+  top: 82px;
+  left: -34px;
+  width: 34px;
+  min-height: 74px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  color: #abb2bf;
+  cursor: pointer;
+  background: #21252b;
+  box-shadow: -8px 12px 24px rgba(15, 23, 42, 0.18);
 }
 
 .source-header {
-  align-items: start;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px;
+  border-bottom: 1px solid rgba(171, 178, 191, 0.16);
+}
+
+.source-header span {
+  color: #61afef;
 }
 
 .source-header strong {
+  color: #abb2bf;
   overflow-wrap: anywhere;
+}
+
+.icon-action {
+  min-width: 44px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  color: inherit;
+  font-size: 22px;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .source-badges {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   gap: 6px;
+  padding: 10px 13px;
+  border-bottom: 1px solid rgba(171, 178, 191, 0.14);
 }
 
 .source-badges span {
-  border: 1px solid rgba(125, 211, 252, 0.25);
+  border: 1px solid rgba(97, 175, 239, 0.28);
   border-radius: 999px;
   padding: 3px 8px;
-  color: #bfdbfe;
-  background: rgba(14, 165, 233, 0.12);
-  text-transform: none;
+  color: #61afef;
+  font-size: 12px;
+  background: rgba(97, 175, 239, 0.1);
+}
+
+.source-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 11px 13px;
+  border-bottom: 1px solid rgba(171, 178, 191, 0.14);
+  color: #abb2bf;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.source-meta div {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.source-meta dt,
+.source-meta dd {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.source-meta dt {
+  color: #61afef;
+  font-weight: 800;
+}
+
+.source-meta dd {
+  overflow-wrap: anywhere;
 }
 
 .code-view {
@@ -899,17 +1011,204 @@ progress::-webkit-progress-value {
   min-height: 0;
   height: 100%;
   overflow: auto;
-  background: #07111f;
+  color: #abb2bf;
+  background: #282c34;
+  scrollbar-color: #4b5263 #21252b;
 }
 
-.code-view code {
-  display: block;
+.code-rows {
+  display: table;
+  min-width: max-content;
   min-height: 100%;
-  padding: 16px;
-  white-space: pre;
+  width: 100%;
+  padding: 12px 0;
+  color: #abb2bf;
+  background: #282c34;
   font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 4;
+}
+
+.code-row {
+  display: table-row;
+}
+
+.code-row:hover {
+  background: rgba(97, 175, 239, 0.08);
+}
+
+.line-number,
+.code-row code {
+  display: table-cell;
+  white-space: pre;
+}
+
+.line-number {
+  user-select: none;
+  width: 58px;
+  padding: 0 14px 0 8px;
+  color: #636d83;
+  text-align: right;
+  background: #282c34;
+  border-right: 1px solid rgba(99, 109, 131, 0.28);
+}
+
+.code-row code {
+  min-width: 100%;
+  padding: 0 24px 0 16px;
+  font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+
+.code-view :deep(.hljs) {
+  color: #abb2bf;
+  background: transparent;
+}
+
+.code-view :deep(.hljs-keyword),
+.code-view :deep(.hljs-selector-tag),
+.code-view :deep(.hljs-built_in),
+.code-view :deep(.hljs-name) {
+  color: #c678dd;
+}
+
+.code-view :deep(.hljs-string),
+.code-view :deep(.hljs-title.class_),
+.code-view :deep(.hljs-section),
+.code-view :deep(.hljs-attribute) {
+  color: #98c379;
+}
+
+.code-view :deep(.hljs-title.function_),
+.code-view :deep(.hljs-function .hljs-title),
+.code-view :deep(.hljs-property),
+.code-view :deep(.hljs-attr) {
+  color: #61afef;
+}
+
+.code-view :deep(.hljs-number),
+.code-view :deep(.hljs-literal),
+.code-view :deep(.hljs-symbol) {
+  color: #d19a66;
+}
+
+.code-view :deep(.hljs-variable),
+.code-view :deep(.hljs-template-variable),
+.code-view :deep(.hljs-params),
+.code-view :deep(.hljs-meta) {
+  color: #e06c75;
+}
+
+.code-view :deep(.hljs-comment),
+.code-view :deep(.hljs-quote) {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.source-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(12px);
+}
+
+.source-fullscreen-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(1500px, 96vw);
+  height: min(920px, 92vh);
+  overflow: hidden;
+  border: 1px solid rgba(171, 178, 191, 0.2);
+  border-radius: 8px;
+  background: #282c34;
+  box-shadow: 0 34px 120px rgba(15, 23, 42, 0.42);
+}
+
+.fullscreen-code .code-rows {
+  font-size: 14px;
   line-height: 1.7;
+}
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: start center;
+  padding: 10vh 16px 16px;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(8px);
+}
+
+.search-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(720px, 100%);
+  max-height: min(720px, 80vh);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.24);
+}
+
+.search-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.search-field {
+  padding: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.result-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.result-list button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 11px;
+  color: #172033;
+  text-align: left;
+  background: #ffffff;
+}
+
+.result-list button.selected,
+.result-list button:hover {
+  border-color: #0ea5e9;
+  background: #f0f9ff;
+}
+
+.result-list button span,
+.result-list button small {
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.result-list button small,
+.result-list p {
+  font-size: 12px;
+}
+
+.result-list p {
+  margin: 28px 8px;
+  color: #64748b;
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -918,53 +1217,56 @@ progress::-webkit-progress-value {
   }
 }
 
-@media (max-width: 1280px) {
-  .workspace-grid {
-    grid-template-columns: minmax(250px, 320px) minmax(420px, 1fr);
-  }
-
-  .source-panel {
-    grid-column: 1 / -1;
-    height: 520px;
-  }
-}
-
-@media (max-width: 900px) {
-  .workspace-grid {
+@media (max-width: 1120px) {
+  .top-workbench,
+  .input-console {
     grid-template-columns: 1fr;
   }
 
-  .file-panel {
-    height: 420px;
+  .source-drawer {
+    height: 620px;
+    min-height: 0;
   }
 }
 
-@media (max-width: 780px) {
+@media (max-width: 720px) {
   .app-shell {
-    padding: 16px;
+    padding: 10px;
   }
 
-  .hero-panel,
-  .input-row,
-  .workspace-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .mode-tabs,
-  .status-strip {
+  .mode-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
 
-@media (max-width: 520px) {
-  .mode-tabs,
-  .status-strip {
-    grid-template-columns: 1fr;
+  .stage-toolbar,
+  .progress-panel {
+    display: grid;
   }
 
-  .panel-titlebar,
-  .source-header {
-    display: grid;
+  .source-drawer {
+    position: fixed;
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    height: 70vh;
+    transform: translateY(calc(100% + 18px));
+  }
+
+  .drawer-handle {
+    top: -34px;
+    left: auto;
+    right: 18px;
+    width: 76px;
+    min-height: 34px;
+    border-right: 1px solid rgba(15, 23, 42, 0.18);
+    border-bottom: 0;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .source-drawer.open {
+    transform: translateY(0);
   }
 }
 </style>

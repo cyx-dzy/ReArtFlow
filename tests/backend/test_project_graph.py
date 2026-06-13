@@ -34,18 +34,20 @@ def test_project_graph_builds_module_and_role_overview(tmp_path: Path):
     edge_types = {edge["type"] for edge in graph["edges"]}
 
     assert "项目总览" in labels
-    assert "backend 模块" in labels
-    assert "frontend 模块" in labels
+    assert "后端解析服务" in labels
+    assert "前端交互层" in labels
     assert shapes["models.py"] == "database"
     assert shapes["api.py"] == "api"
     assert shapes["App.vue"] == "ui"
-    assert "contains" in edge_types
-    assert len(graph["nodes"]) <= 42
-    assert len(graph["edges"]) <= 72
+    assert "contains" not in edge_types
+    assert {"module_relates", "calls"}.intersection(edge_types)
+    file_paths = {node["path"] for node in graph["nodes"] if node.get("isFile")}
+    assert file_paths == {"backend/api.py", "backend/models.py", "frontend/App.vue"}
+    assert all(node.get("description") for node in graph["nodes"] if node.get("isFile"))
 
     mermaid = to_mermaid(graph)
     assert "subgraph" in mermaid
-    assert "读写数据" in mermaid or "包含" in mermaid
+    assert "模块关联" in mermaid or "调用" in mermaid
 
 
 def test_architecture_snapshot_is_llm_friendly(tmp_path: Path):
@@ -100,7 +102,52 @@ def test_project_graph_accepts_valid_ai_relationships_and_filters_bad_paths(tmp_
     graph = build_diagram_from_parsed_files([api, model, ui], root_path=str(tmp_path), ai_diagram=ai_diagram)
 
     node_ids = {node["id"] for node in graph["nodes"]}
+    node_paths = {node.get("path") for node in graph["nodes"]}
     edge_types = {edge["type"] for edge in graph["edges"]}
     assert "fake" not in node_ids
+    assert {"backend/api.py", "backend/models.py", "frontend/App.vue"}.issubset(node_paths)
     assert {"routes_to", "reads_writes"}.issubset(edge_types)
+    assert all(edge["source"] in node_ids and edge["target"] in node_ids for edge in graph["edges"])
     assert graph["metadata"]["source"] == "ai"
+
+
+def test_static_diagram_uses_representative_file_limit_for_large_projects(tmp_path: Path):
+    source = tmp_path / "src"
+    source.mkdir()
+    files = []
+    for index in range(40):
+        file_path = source / f"module_{index}.py"
+        file_path.write_text(f"def fn_{index}():\n    return {index}\n", encoding="utf-8")
+        files.append(_parsed(file_path))
+
+    graph = build_diagram_from_parsed_files(files, root_path=str(tmp_path))
+
+    file_nodes = [node for node in graph["nodes"] if node.get("isFile")]
+    assert len(file_nodes) == graph["metadata"]["node_limit"]
+    assert graph["metadata"]["total_files"] == len(files)
+    assert graph["metadata"]["displayed_files"] == len(file_nodes)
+    assert len(graph["edges"]) <= graph["metadata"]["edge_limit"]
+    assert all(node["description"] for node in file_nodes)
+
+
+def test_ai_diagram_missing_file_is_completed_from_static_fallback(tmp_path: Path):
+    backend = tmp_path / "backend"
+    backend.mkdir()
+    api = _parsed(backend / "api.py")
+    service = _parsed(backend / "service.py")
+    ai_diagram = {
+        "title": "后端项目",
+        "summary": "接口调用服务。",
+        "groups": [{"id": "backend", "label": "后端解析服务", "description": "后端代码", "color": "#38bdf8"}],
+        "nodes": [
+            {"id": "api", "label": "api.py", "type": "接口层", "shape": "api", "groupId": "backend", "path": "backend/api.py"}
+        ],
+        "edges": [{"source": "api", "target": "missing", "type": "calls", "label": "无效"}],
+    }
+
+    graph = build_diagram_from_parsed_files([api, service], root_path=str(tmp_path), ai_diagram=ai_diagram)
+
+    node_paths = {node.get("path") for node in graph["nodes"]}
+    node_ids = {node["id"] for node in graph["nodes"]}
+    assert {"backend/api.py", "backend/service.py"}.issubset(node_paths)
+    assert all(edge["source"] in node_ids and edge["target"] in node_ids for edge in graph["edges"])
