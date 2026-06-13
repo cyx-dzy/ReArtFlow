@@ -1,5 +1,7 @@
 """FastAPI routes for project input and background generation jobs."""
 
+from __future__ import annotations
+
 import logging
 import os
 import tempfile
@@ -12,7 +14,12 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from ...diagram.project_graph import build_diagram_from_parsed_files, format_diagram_response, store_project_diagram
+from ...diagram.project_graph import (
+    build_architecture_snapshot,
+    build_diagram_from_parsed_files,
+    format_diagram_response,
+    store_project_diagram,
+)
 from ...input.gitee_handler import GiteeInputProcessor
 from ...input.github_handler import GitHubInputProcessor
 from ...input.local_handler import LocalPathInputProcessor
@@ -168,6 +175,37 @@ def _collect_explanations(parsed_files, job_id: Optional[str] = None) -> Dict[st
     return explanations
 
 
+def _collect_architecture_diagram(
+    parsed_files,
+    root_path: str,
+    explanations: Dict[str, str],
+    job_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    if os.getenv("LLM_ARCHITECTURE_ENABLED", "1") == "0":
+        logger.info("Skipping architecture graph: LLM_ARCHITECTURE_ENABLED=0")
+        return None
+
+    provider = os.getenv("LLM_PROVIDER", "qianwen").lower()
+    if not _provider_has_key(provider):
+        logger.info("Skipping architecture graph: provider=%s has no API key", provider)
+        return None
+
+    try:
+        _update_job(job_id, stage="ai", message="AI 正在识别模块和文件关系", current=0, total=1)
+        snapshot = build_architecture_snapshot(parsed_files, root_path=root_path, explanations=explanations)
+        client = LLMClient()
+        logger.info(
+            "Starting architecture graph generation provider=%s model=%s files=%s",
+            provider,
+            client.model,
+            len(snapshot["files"]),
+        )
+        return client.generate_architecture_graph(snapshot)
+    except Exception as exc:
+        logger.warning("Architecture graph generation failed: %s", exc)
+        return None
+
+
 def _create_project_from_processed_input(result: Dict[str, Any], job_id: Optional[str] = None) -> Dict[str, Any]:
     project_id = uuid.uuid4().hex
     source_path = result.get("path", "")
@@ -208,9 +246,21 @@ def _create_project_from_processed_input(result: Dict[str, Any], job_id: Optiona
 
     _update_job(job_id, stage="ai", message="源码解析完成，准备进行 AI 增强", current=0, total=1)
     explanations = _collect_explanations(parsed_files, job_id=job_id)
-    _update_job(job_id, stage="diagram", message="正在生成流程图", current=1, total=1)
-    logger.info("Building diagram project_id=%s files=%s explanations=%s", project_id, len(parsed_files), len(explanations))
-    diagram = build_diagram_from_parsed_files(parsed_files, root_path=source_path, explanations=explanations)
+    ai_diagram = _collect_architecture_diagram(parsed_files, source_path, explanations, job_id=job_id)
+    _update_job(job_id, stage="diagram", message="正在生成模块关系图", current=1, total=1)
+    logger.info(
+        "Building diagram project_id=%s files=%s explanations=%s ai_diagram=%s",
+        project_id,
+        len(parsed_files),
+        len(explanations),
+        bool(ai_diagram),
+    )
+    diagram = build_diagram_from_parsed_files(
+        parsed_files,
+        root_path=source_path,
+        explanations=explanations,
+        ai_diagram=ai_diagram,
+    )
     record = store_project_diagram(
         project_id,
         diagram,

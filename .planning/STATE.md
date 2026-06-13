@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: phase 1-4 repair implementation (2026-06-11)
-last_updated: "2026-06-12T00:00:00+08:00"
-last_activity: Phase 5 black-box feedback fixes: progress visibility, Qianwen switch, and cost control
+stopped_at: phase 4/5 AI architecture relationship upgrade (2026-06-13)
+last_updated: "2026-06-13T00:00:00+08:00"
+last_activity: Added GitDiagram-style AI architecture graph pass, module grouping, node shapes/colors, and richer relation types
 progress:
-  percent: 72
+  percent: 84
 ---
 
 # Project State
@@ -114,3 +114,18 @@ Resume file: None
 - Parser now ignores dependency/build directories such as `node_modules`, `.git`, `.venv`, `dist`, and `build`.
 - Large zip pre-check with AI disabled now parses 19 project files instead of 789 dependency-heavy files and generates 73 nodes / 72 edges.
 - Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 22 passed, 2 skipped; `npm run build` -> passed.
+
+## GitDiagram-Style Diagram Update 2026-06-12
+
+- Referenced GitDiagram's MIT-licensed architecture graph approach: compact groups, bounded nodes/edges, noisy asset filtering, and Mermaid-friendly output.
+- ReActFlow now builds a Chinese architecture overview with `项目概览`, `子系统`, and `核心文件` nodes instead of a large file-summary inventory.
+- Resource/data files such as `.png`, `.jpg`, `.jpeg`, `.csv`, `.xlsx`, `.pdf`, archives, fonts, and media are excluded from project parsing and file browsing.
+- Large zip pre-check with AI disabled now generates a compact graph: 13 nodes / 12 edges / 3 groups, with no CSV/image nodes.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 25 passed, 2 skipped; `npm run build` -> passed.
+
+## Qianwen Model Fallback Update 2026-06-13
+
+- Qianwen calls now try the current `LLM_MODEL` first, then fallback through: `qwen3.7-plus`, `qwen-math-turbo`, `qwen3-vl-235b-a22b-thinking`, `qwen3-vl-32b-thinking`, `qwen-plus-2025-07-28`, `qwen-max`, and `glm-5`.
+- The fallback list can be overridden with `QIANWEN_MODEL_FALLBACKS`.
+- If all Qianwen models fail or time out, upstream diagram generation skips AI and continues with the static graph.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 30 passed, 2 skipped; `npm run build` -> passed.

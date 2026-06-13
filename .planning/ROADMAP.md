@@ -6,7 +6,7 @@
 - [ ] **Phase 2: Multi-language Code Parsing** - Status: In Progress. Parser now prefers Tree-sitter and falls back to deterministic summaries when grammar ABI versions are incompatible.
 - [ ] **Phase 3: AI Semantic Understanding** - Status: In Progress. Qianwen is now the default provider with real API verification; DeepSeek remains configurable.
 - [ ] **Phase 4: Diagram Generation** - Status: In Progress. Local/Zip input now generates retrievable real G6/Mermaid diagram data; GitHub/Gitee manual browser verification remains.
-- [ ] **Phase 5: Frontend UI** - Status: Ready for Black-Box Retest. Frontend now has input controls, job progress polling, graph rendering, file list, basic search, node click linkage, and source viewing.
+- [ ] **Phase 5: Frontend UI** - Status: Ready for Visual Black-Box Retest. Frontend now has input controls, job progress polling, graph rendering, file list, search, node click linkage, source viewing, and a polished graph-workbench layout.
 - [ ] **Phase 6: Deployment & Operations** - Status: Pending. Health endpoint exists, but Docker/frontend delivery and scaling are not ready.
 
 ## Phase Details
@@ -111,3 +111,28 @@
 - GitDiagram reference used: filter noisy repo content, generate from compact repository structure, persist artifacts, and enforce quota/budget controls.
 - Large `Chinese-Traditional-Culture.zip` pre-check now excludes `node_modules`, parses 19 project files, and generates 73 nodes / 72 edges.
 - Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 22 passed, 2 skipped; `npm run build` -> passed.
+
+## GitDiagram-Style Diagram Update 2026-06-12
+
+- Diagram output now follows a Chinese GitDiagram-inspired overview style: project overview, subsystem groups, and key file nodes.
+- Graph construction is bounded to avoid inventory-like diagrams: max 8 groups, 34 nodes, and 48 edges.
+- Resource/data files such as images, CSV/Excel files, archives, fonts, PDFs, and media are excluded from parsing and file browsing.
+- Large zip pre-check now produces 13 nodes / 12 edges / 3 groups, with no CSV/image nodes.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 25 passed, 2 skipped; `npm run build` -> passed.
+
+## Phase 5 Visual Polish Update 2026-06-12
+
+- Reworked the frontend into a cohesive dark graph-workbench UI with parser controls, progress, file index, graph canvas, and source preview arranged for scanning and repeated use.
+- Replaced damaged Chinese interface copy with readable labels, empty states, progress stages, and error text.
+- Improved accessibility and responsiveness with visible labels, focus rings, larger controls, mobile/tablet breakpoints, and reduced-motion handling.
+- Restyled the G6 graph canvas with dark grid background, type-aware nodes, selected/search highlights, hover states, better edge labels, and resize handling.
+- Verified `npm run build` passes; local dev server returned HTTP 200. In-app Browser screenshot QA is still pending because the browser connection disconnected during verification.
+
+## AI Architecture Relationship Update 2026-06-13
+
+- Added a GitDiagram-style graph pipeline: static parsing builds a compact project snapshot, Qianwen can generate structured `groups` / `nodes` / `edges`, and the backend validates paths and edge endpoints before rendering.
+- Diagram nodes now carry `shape`, `color`, `type`, `language`, `description`, and `groupId` metadata so modules can be grouped and files can be drawn as database/API/UI/config/test/service shapes.
+- Relationship labels now include `routes_to`, `renders`, `reads_writes`, `configures`, `tests`, `imports`, `calls`, `depends_on`, `serves`, and `stores` instead of only call-like edges.
+- Frontend G6 rendering now supports database cylinder nodes, API diamond nodes, UI ellipses, service circles, relation-colored edges, dashed config/test edges, and selected/search highlighting.
+- Added `LLM_ARCHITECTURE_ENABLED` for turning the AI architecture pass on/off while preserving static fallback behavior.
+- Verified commands: `.\.venv\Scripts\python.exe -m pytest -q` -> 28 passed, 2 skipped; `npm run build` -> passed with the known G6 chunk-size warning.

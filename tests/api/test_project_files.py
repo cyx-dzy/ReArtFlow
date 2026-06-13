@@ -34,6 +34,26 @@ def test_project_files_and_content(tmp_path: Path, monkeypatch):
     assert content["language"] == "Python"
 
 
+def test_project_files_exclude_assets_and_data_files(tmp_path: Path, monkeypatch):
+    project_id = _create_project(tmp_path, monkeypatch)
+    (tmp_path / "logo.png").write_bytes(b"fake image")
+    (tmp_path / "data.csv").write_text("name,value\nfoo,1\n", encoding="utf-8")
+    (tmp_path / "notes.jpg").write_bytes(b"fake image")
+
+    files_response = client.get(f"/projects/{project_id}/files")
+    assert files_response.status_code == 200
+    paths = {item["path"] for item in files_response.json()["files"]}
+
+    assert "main.py" in paths
+    assert "README.md" in paths
+    assert "logo.png" not in paths
+    assert "data.csv" not in paths
+    assert "notes.jpg" not in paths
+
+    csv_response = client.get(f"/projects/{project_id}/files/content", params={"path": "data.csv"})
+    assert csv_response.status_code == 404
+
+
 def test_project_file_content_rejects_path_traversal(tmp_path: Path, monkeypatch):
     project_id = _create_project(tmp_path, monkeypatch)
     response = client.get(f"/projects/{project_id}/files/content", params={"path": "../secret.txt"})

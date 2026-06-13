@@ -1,35 +1,20 @@
 # ReActFlow
 
-ReActFlow 是一个面向代码仓库理解的流程图生成工具。它可以接收本地目录、Zip 文件、GitHub 仓库或 Gitee 仓库，先用静态解析提取源码结构，再按需调用大模型补充中文说明，最终在前端展示可点击的 AntV G6 流程图。
+ReActFlow 是一个面向非技术人员的跨语言项目结构理解工具。它可以接收本地目录、Zip、GitHub 或 Gitee 仓库，先用静态解析提取主体源码结构，再按需调用千问等大模型识别模块职责和文件关系，最后在前端展示可点击的中文架构图。
 
 ## 当前能力
 
 - 输入来源：Zip、本地目录、GitHub、Gitee。
-- 后端解析：FastAPI 接收输入，解压或克隆项目，并发解析源码文件。
-- 图谱生成：根据文件、语言、函数、类、导入、调用等结构生成 Mermaid 与 G6 数据。
-- 前端交互：Vue 3 页面支持上传项目、查看解析进度、搜索文件、点击节点查看源码。
-- AI 增强：默认使用千问百炼兼容接口，给高价值源码文件补充中文解释。
-- 成本控制：流程图主体由静态解析生成，LLM 只处理有限数量和有限字符数的文件。
-
-## 项目结构
-
-```text
-ReActFlow/
-├─ backend/
-│  ├─ api/          # FastAPI 应用与路由
-│  ├─ diagram/      # 图谱存储、Mermaid/G6 转换
-│  ├─ input/        # Zip、本地路径、GitHub、Gitee 输入处理
-│  ├─ parser/       # 多语言源码解析
-│  └─ semantic/     # LLM 客户端、提示词、缓存
-├─ frontend/        # Vue 3 + AntV G6 前端
-├─ tests/           # pytest 测试
-├─ .planning/       # GSD 工作流文档
-└─ docker-compose.yml
-```
+- 后端解析：FastAPI 接收输入，解压或克隆项目，并解析可识别的源码文件。
+- 中文架构图：参考 GitDiagram 的紧凑图谱思路，输出项目概览、子系统、核心文件、节点形状和多种关系。
+- 前端交互：Vue 3 + AntV G6 展示图谱，支持解析进度、文件搜索、节点点击联动源码预览。
+- 成本控制：静态解析负责压缩上下文，LLM 只处理有限文件和结构化项目快照。
+- 资源过滤：图片、CSV/Excel、PDF、压缩包、字体、音视频等非主体框架文件不会进入解析和文件浏览结果。
+- 静态兜底：没有 API Key、模型失败或关闭 AI 时，仍可生成静态图谱。
 
 ## 本地启动
 
-### 1. 后端
+### 后端
 
 ```powershell
 cd D:\project\ReActFlow
@@ -40,14 +25,15 @@ $env:LLM_MODEL="qwen-plus"
 uvicorn backend.api.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
-如果只想测试静态流程图，不调用大模型，可以不设置 API Key，或显式限制：
+如果只想生成静态图谱，不调用大模型：
 
 ```powershell
 $env:LLM_MAX_FILES="0"
+$env:LLM_ARCHITECTURE_ENABLED="0"
 uvicorn backend.api.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### 2. 前端
+### 前端
 
 ```powershell
 cd D:\project\ReActFlow\frontend
@@ -55,33 +41,50 @@ npm install
 npm run dev
 ```
 
-浏览器访问：
+访问：
 
 ```text
 http://localhost:5173
 ```
 
-## 重要环境变量
+## 环境变量
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `LLM_PROVIDER` | `qianwen` | 可选 `qianwen`、`deepseek`、`openai` |
 | `QIANWEN_API_KEY` | 空 | 千问百炼 API Key |
-| `LLM_MODEL` | `qwen-plus` | 千问默认模型 |
-| `LLM_MAX_FILES` | `20` | 单次项目最多调用 LLM 的文件数 |
-| `LLM_MAX_CHARS_PER_FILE` | `4000` | 每个文件最多送入 LLM 的字符数 |
-| `LLM_MAX_TOTAL_CHARS` | `60000` | 单次项目最多送入 LLM 的总字符数 |
+| `LLM_MODEL` | `qwen-plus` | 当前优先访问的千问模型 |
+| `QIANWEN_MODEL_FALLBACKS` | 见下方 | 当前模型失败后的千问候选模型，英文逗号分隔 |
+| `LLM_MAX_FILES` | `20` | 单个项目最多对多少个高价值文件做 AI 单文件解释 |
+| `LLM_MAX_CHARS_PER_FILE` | `4000` | 单文件最多送入 LLM 的字符数 |
+| `LLM_MAX_TOTAL_CHARS` | `60000` | 单项目单文件解释阶段最多送入 LLM 的总字符数 |
+| `LLM_ARCHITECTURE_ENABLED` | `1` | 是否让 LLM 生成整体模块和关系图谱；设为 `0` 时只使用静态图谱 |
 | `INPUT_JOB_WORKERS` | `2` | 后台解析任务并发数 |
 
-## 成本控制策略
+## 千问模型兜底
 
-ReActFlow 参考 GitDiagram 的思路：先获取仓库结构并过滤噪声，再把图谱生成拆成可观察的阶段，并缓存/限制大模型调用。当前实现采用更保守的本地策略：
+系统会先尝试当前 `LLM_MODEL`。如果当前模型访问失败或超时，会按下面顺序继续尝试：
 
-- 不把整个项目直接发送给大模型。
-- 流程图主体来自静态解析结果。
-- 只挑选函数、类、导入、调用等结构信号更强的前 `LLM_MAX_FILES` 个文件做 AI 解释。
-- 对单文件和单项目设置字符预算。
-- 没有 API Key 或 `LLM_MAX_FILES=0` 时自动跳过 AI，仍可生成基础图谱。
+```text
+qwen3.7-plus,
+qwen-math-turbo,
+qwen3-vl-235b-a22b-thinking,
+qwen3-vl-32b-thinking,
+qwen-plus-2025-07-28,
+qwen-max,
+glm-5
+```
+
+所有模型都失败后，后端会跳过 AI 增强，继续生成静态图谱。可以用 `QIANWEN_MODEL_FALLBACKS` 覆盖默认顺序，多个模型用英文逗号分隔。
+
+## 图谱生成流程
+
+1. 输入处理：解压 Zip、读取本地目录或克隆仓库。
+2. 静态解析：过滤 `node_modules`、`.git`、`dist`、`build`、资源文件等噪声内容。
+3. 项目快照：把文件路径、语言、模块、角色、AST 摘要和可选中文解释整理成精简 JSON。
+4. 千问图谱：请求模型输出 `groups`、`nodes`、`edges`，节点必须引用真实文件路径。
+5. 安全校验：过滤不存在的路径、无效节点和无效边，并自动补齐 `项目 -> 模块 -> 文件` 的包含关系。
+6. 前端展示：G6 根据 `shape`、`color`、`type`、`label` 渲染不同图形和关系。
 
 ## 测试
 
@@ -109,7 +112,7 @@ $env:RUN_QIANWEN_INTEGRATION="1"
 .\.venv\Scripts\python.exe -m pytest tests\semantic\test_llm_client.py -q
 ```
 
-## API 简述
+## API
 
 - `POST /input/zip/jobs`：上传 Zip 并创建后台解析任务。
 - `POST /input/jobs`：提交本地路径、GitHub 或 Gitee 输入并创建后台解析任务。

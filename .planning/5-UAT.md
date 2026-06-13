@@ -41,10 +41,51 @@ Phase 5 basic functionality is ready for user black-box testing. This pass inten
 ## Known Limits Before Black-Box Test
 
 - Browser plugin in this environment returned `ERR_BLOCKED_BY_CLIENT` for localhost, so visual screenshot verification was not completed here.
-- UI is functional-first and not polished.
+- UI has now received a visual polish pass, but user-side browser black-box review is still pending.
 - GitHub/Gitee real network clone still depends on external network availability.
 - Qianwen is now the default AI provider. DeepSeek support remains available by setting `LLM_PROVIDER=deepseek`.
 - In-app Browser plugin startup was retried on 2026-06-12; the plugin file exists, but local dev server process startup is unstable in the restricted shell, so UI automation was not completed in this pass.
+
+## Visual Polish Pass 2026-06-12
+
+Implemented:
+
+- Rebuilt the Vue shell into a dark graph-workbench layout with a hero/status band, parser controls, file index, graph canvas, and source preview visible as one cohesive workspace.
+- Replaced damaged Chinese UI copy with readable Chinese labels, empty states, errors, progress stages, and helper text.
+- Improved input controls with labeled fields, clearer tab states, keyboard focus rings, larger touch targets, and responsive mobile/tablet breakpoints.
+- Restyled job progress with stage, message, percent, and progress bar treatment so large-project parsing feels active instead of frozen.
+- Upgraded the G6 diagram surface with dark grid canvas, larger rounded nodes, type-aware node styling, selected/search highlights, edge labels, hover state, and resize handling.
+- Updated the browser title from `ReArtFlow Diagram Test` to `ReActFlow`.
+
+Verification:
+
+- `npm run build` -> passed, with only the known G6 chunk-size warning.
+- Frontend mojibake scan across `frontend/src` and `frontend/index.html` -> no matches.
+- Local Vite dev server responded with HTTP 200 at `http://127.0.0.1:5173`.
+
+Open verification gap:
+
+- In-app Browser connection failed during screenshot/DOM verification with a native pipe disconnect after reconnect. Visual browser QA still needs a user-side black-box pass.
+
+## AI Architecture Relationship Pass 2026-06-13
+
+Implemented:
+
+- Added an AI architecture graph pass after file-level explanations. It sends a compact project snapshot to the configured LLM, defaulting to Qianwen.
+- The AI graph response is expected to contain structured `groups`, `nodes`, and `edges`, including file paths, node shapes, module colors, descriptions, and relationship types.
+- Backend validation filters AI nodes that reference nonexistent paths, drops edges whose endpoints are invalid, and adds `项目 -> 模块 -> 文件` containment edges so the graph remains connected.
+- Static fallback graph now classifies files into API, UI, database, config, test, service, and document roles, with different `shape` values.
+- Frontend G6 rendering now draws database files as cylinder-style nodes and uses different shapes/colors for API, UI, config, test, service, module, and system nodes.
+- Relationship rendering now supports colored and dashed edges for routes, rendering, read/write, config, tests, imports, calls, dependencies, service, and storage semantics.
+
+Verification:
+
+- `.\.venv\Scripts\python.exe -m pytest -q` -> 28 passed, 2 skipped.
+- `npm run build` -> passed, with only the known G6 chunk-size warning.
+
+Open verification gap:
+
+- A real Qianwen end-to-end repository run still requires `QIANWEN_API_KEY` and user-side black-box review.
 
 ## Pre-Black-Box Zip Test 2026-06-11
 
@@ -94,3 +135,25 @@ Verification commands:
 - `.\.venv\Scripts\python.exe -m pytest -q` -> 22 passed, 2 skipped.
 - `npm run build` -> passed, with only the known G6 chunk-size warning.
 - Qianwen real API test -> 4 passed, 1 skipped.
+
+## GitDiagram-Style Retest 2026-06-12
+
+Implemented:
+
+- Graph shape changed from file inventory to Chinese architecture overview.
+- New graph metadata includes `groups`, compact `nodes`, and bounded `edges`.
+- Node labels are Chinese-friendly: `项目概览`, `backend 子系统`, `frontend 子系统`, `核心文件`.
+- Resource/data files are filtered from parsing and file browsing: images, CSV/Excel, archives, fonts, PDFs, and media.
+
+Large zip retest:
+
+- Test input: `Chinese-Traditional-Culture.zip`.
+- AI disabled with `LLM_MAX_FILES=0`.
+- Result: ready.
+- Generated graph: 13 nodes / 12 edges / 3 groups.
+- CSV/image nodes: none.
+
+Verification commands:
+
+- `.\.venv\Scripts\python.exe -m pytest -q` -> 25 passed, 2 skipped.
+- `npm run build` -> passed, with only the known G6 chunk-size warning.
