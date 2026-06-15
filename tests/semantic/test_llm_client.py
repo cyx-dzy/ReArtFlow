@@ -185,6 +185,34 @@ def test_qianwen_architecture_graph_parses_json(monkeypatch):
     assert request_json["response_format"] == {"type": "json_object"}
 
 
+def test_qianwen_architecture_graph_uses_configured_timeout(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "qianwen")
+    monkeypatch.setenv("QIANWEN_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_ARCHITECTURE_TIMEOUT", "7")
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    dummy_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({"groups": [], "nodes": [], "edges": []})
+                }
+            }
+        ]
+    }
+    mock_response = mock.Mock()
+    mock_response.json.return_value = dummy_response
+    mock_response.raise_for_status.return_value = None
+    mock_post = mock.Mock(return_value=mock_response)
+    monkeypatch.setattr("backend.semantic.llm_client.requests.post", mock_post)
+    monkeypatch.setattr("backend.semantic.llm_client.SemanticCache.get", lambda self, payload: None)
+    monkeypatch.setattr("backend.semantic.llm_client.SemanticCache.set", lambda self, payload, value, ttl=86400: None)
+
+    client = LLMClient()
+    client.generate_architecture_graph({"files": []})
+
+    assert mock_post.call_args.kwargs["timeout"] == 7
+
+
 @pytest.mark.integration
 def test_deepseek_real_api(monkeypatch):
     if os.getenv("RUN_DEEPSEEK_INTEGRATION") != "1":

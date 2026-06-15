@@ -56,8 +56,8 @@ def test_zip_job_reports_progress_and_generates_diagram(tmp_path: Path, monkeypa
 def test_github_handler_validates_and_clones_with_mock(monkeypatch):
     calls = []
 
-    def fake_run(command, check, stdout, stderr):
-        calls.append(command)
+    def fake_run(command, check, stdout, stderr, timeout):
+        calls.append((command, timeout))
         os.makedirs(command[-1], exist_ok=True)
         return subprocess.CompletedProcess(command, 0)
 
@@ -66,7 +66,24 @@ def test_github_handler_validates_and_clones_with_mock(monkeypatch):
 
     assert result["source_type"] == "github"
     assert os.path.isdir(result["path"])
-    assert calls[0][:3] == ["git", "clone", "--depth"]
+    assert calls[0][0][:3] == ["git", "clone", "--depth"]
+    assert calls[0][1] == 120
+
+
+def test_github_handler_clone_timeout_is_reported(monkeypatch):
+    def fake_run(command, check, stdout, stderr, timeout):
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setenv("GIT_CLONE_TIMEOUT", "3")
+    monkeypatch.setattr("backend.input.github_handler.subprocess.run", fake_run)
+
+    try:
+        GitHubInputProcessor().process({"repo_url": "https://github.com/example/repo"})
+    except RuntimeError as exc:
+        assert "timed out" in str(exc)
+        assert "3s" in str(exc)
+    else:
+        raise AssertionError("Expected clone timeout to raise RuntimeError")
 
 
 def test_gitee_handler_validates_and_clones_with_mock(monkeypatch):

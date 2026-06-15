@@ -12,11 +12,18 @@ from backend.semantic import to_g6, to_mermaid
 PROJECT_DIAGRAM_STORE: Dict[str, Dict[str, Any]] = {}
 
 MAX_GRAPH_GROUPS = 9
-MAX_GRAPH_FILE_NODES = int(os.getenv("DIAGRAM_MAX_FILE_NODES", "28"))
-MAX_FILES_PER_GROUP = int(os.getenv("DIAGRAM_MAX_FILES_PER_GROUP", "5"))
-MAX_GRAPH_EDGES = int(os.getenv("DIAGRAM_MAX_EDGES", "64"))
+MAX_GRAPH_FILE_NODES = int(os.getenv("DIAGRAM_MAX_FILE_NODES", "14"))
+MAX_FILES_PER_GROUP = int(os.getenv("DIAGRAM_MAX_FILES_PER_GROUP", "3"))
+MAX_GRAPH_EDGES = int(os.getenv("DIAGRAM_MAX_EDGES", "14"))
 MAX_AI_FILE_NODES = int(os.getenv("DIAGRAM_MAX_AI_FILE_NODES", str(MAX_GRAPH_FILE_NODES)))
 MAX_AI_EDGES = int(os.getenv("DIAGRAM_MAX_AI_EDGES", str(MAX_GRAPH_EDGES)))
+
+
+def _env_int(name: str, default: int, minimum: int = 0) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), minimum)
+    except ValueError:
+        return default
 
 SUMMARY_LABELS = {
     "functions": "函数",
@@ -164,6 +171,32 @@ def _signal(parsed: Any) -> int:
     return sum(int(value or 0) for value in ast_summary.values())
 
 
+def _importance_score(parsed: Any, root_path: Optional[str] = None) -> int:
+    rel_path = _relative_path(getattr(parsed, "path", "") or "", root_path).lower()
+    name = Path(rel_path).name
+    score = _signal(parsed)
+    if name in {"app.py", "main.py", "main.ts", "app.vue", "vite.config.ts", "package.json"}:
+        score += 80
+    if any(part in rel_path for part in ("api/", "routes/", "input.py", "diagram.py", "project_graph.py")):
+        score += 60
+    if any(part in rel_path for part in ("semantic/", "llm", "parser/", "processor", "handler")):
+        score += 45
+    if any(part in rel_path for part in ("frontend/src", "components/", "app.vue")):
+        score += 40
+    if any(part in rel_path for part in ("test", "benchmark", "docs/", "extracted_src")):
+        score -= 120
+    return score
+
+
+def _is_support_file(parsed: Any, root_path: Optional[str] = None) -> bool:
+    rel_path = _relative_path(getattr(parsed, "path", "") or "", root_path).lower()
+    name = Path(rel_path).name
+    return (
+        name.endswith(".d.ts")
+        or any(part in rel_path for part in ("tests/", "test_", "_test.", "benchmark/", "docs/", "extracted_src/"))
+    )
+
+
 def _summary_text(parsed_files: Iterable[Any]) -> str:
     totals: Dict[str, int] = defaultdict(int)
     for parsed in parsed_files:
@@ -247,9 +280,21 @@ def build_architecture_snapshot(
             }
         )
     files.sort(key=lambda item: (-sum(int(v or 0) for v in item["ast_summary"].values()), item["path"]))
+    total_files = len(files)
+    max_files = _env_int("LLM_ARCHITECTURE_MAX_FILES", 24)
+    max_explanation_chars = _env_int("LLM_ARCHITECTURE_MAX_EXPLANATION_CHARS", 120)
+    if max_files:
+        files = files[:max_files]
+    for file_info in files:
+        file_info["explanation"] = str(file_info.get("explanation") or "")[:max_explanation_chars]
     return {
         "goal": "为非技术人员解释跨语言项目结构",
         "files": files,
+        "metadata": {
+            "total_files": total_files,
+            "sent_files": len(files),
+            "truncated": len(files) < total_files,
+        },
         "relation_types": RELATION_LABELS,
         "shape_types": {
             "database": "数据库、模型、Schema、迁移脚本",
@@ -270,26 +315,47 @@ def _rank_groups(parsed_list: Sequence[Any], root_path: Optional[str]) -> List[T
     for parsed in parsed_list:
         rel_path = _relative_path(getattr(parsed, "path", "") or "", root_path)
         groups_by_name[_top_level(rel_path)].append(parsed)
-    return sorted(groups_by_name.items(), key=lambda item: (-sum(_signal(parsed) for parsed in item[1]), item[0]))[
+    return sorted(groups_by_name.items(), key=lambda item: (-sum(_importance_score(parsed, root_path) for parsed in item[1]), item[0]))[
         :MAX_GRAPH_GROUPS
     ]
 
 
-def _select_representative_files(ranked_groups: Sequence[Tuple[str, List[Any]]]) -> Set[str]:
+def _select_representative_files(ranked_groups: Sequence[Tuple[str, List[Any]]], root_path: Optional[str]) -> Set[str]:
     selected: Set[str] = set()
-    grouped = [(name, sorted(files, key=lambda parsed: (-_signal(parsed), getattr(parsed, "path", "")))) for name, files in ranked_groups]
+    grouped = [
+        (name, sorted(files, key=lambda parsed: (-_importance_score(parsed, root_path), -_signal(parsed), getattr(parsed, "path", ""))))
+        for name, files in ranked_groups
+    ]
 
     for _, files in grouped:
         for parsed in files[:MAX_FILES_PER_GROUP]:
+            if _is_support_file(parsed, root_path):
+                continue
             if len(selected) >= MAX_GRAPH_FILE_NODES:
                 return selected
             selected.add(getattr(parsed, "path", "") or "")
 
-    remaining = [parsed for _, files in grouped for parsed in files if (getattr(parsed, "path", "") or "") not in selected]
-    for parsed in sorted(remaining, key=lambda item: (-_signal(item), getattr(item, "path", ""))):
+    remaining = [
+        parsed
+        for _, files in grouped
+        for parsed in files
+        if (getattr(parsed, "path", "") or "") not in selected and not _is_support_file(parsed, root_path)
+    ]
+    for parsed in sorted(remaining, key=lambda item: (-_importance_score(item, root_path), -_signal(item), getattr(item, "path", ""))):
         if len(selected) >= MAX_GRAPH_FILE_NODES:
             break
         selected.add(getattr(parsed, "path", "") or "")
+    if len(selected) < MAX_GRAPH_FILE_NODES:
+        support_files = [
+            parsed
+            for _, files in grouped
+            for parsed in files
+            if (getattr(parsed, "path", "") or "") not in selected
+        ]
+        for parsed in sorted(support_files, key=lambda item: (-_importance_score(item, root_path), -_signal(item), getattr(item, "path", ""))):
+            if len(selected) >= MAX_GRAPH_FILE_NODES:
+                break
+            selected.add(getattr(parsed, "path", "") or "")
     return selected
 
 
@@ -437,7 +503,7 @@ def _build_static_diagram(
     explanations: Dict[str, str],
 ) -> Dict[str, Any]:
     ranked_groups = _rank_groups(parsed_list, root_path)
-    selected_files = _select_representative_files(ranked_groups)
+    selected_files = _select_representative_files(ranked_groups, root_path)
     group_meta: List[Dict[str, Any]] = []
     nodes: List[Dict[str, Any]] = [
         {
@@ -512,6 +578,7 @@ def _build_static_diagram(
             "audience": "non-technical",
             "total_files": len(parsed_list),
             "displayed_files": len([node for node in nodes if node.get("isFile")]),
+            "truncated": len([node for node in nodes if node.get("isFile")]) < len(parsed_list),
             "node_limit": MAX_GRAPH_FILE_NODES,
             "edge_limit": MAX_GRAPH_EDGES,
         },
@@ -696,6 +763,7 @@ def _normalize_ai_diagram(
             "summary": str(ai_diagram.get("summary") or "")[:500],
             "total_files": len(allowed_paths),
             "displayed_files": len([node for node in nodes if node.get("isFile")]),
+            "truncated": len([node for node in nodes if node.get("isFile")]) < len(allowed_paths),
             "node_limit": MAX_AI_FILE_NODES,
             "edge_limit": MAX_AI_EDGES,
         },

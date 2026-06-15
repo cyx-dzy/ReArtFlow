@@ -64,6 +64,29 @@ def test_architecture_snapshot_is_llm_friendly(tmp_path: Path):
     assert "reads_writes" in snapshot["relation_types"]
 
 
+def test_architecture_snapshot_limits_large_projects(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LLM_ARCHITECTURE_MAX_FILES", "3")
+    monkeypatch.setenv("LLM_ARCHITECTURE_MAX_EXPLANATION_CHARS", "8")
+    source = tmp_path / "src"
+    source.mkdir()
+    files = []
+    explanations = {}
+    for index in range(6):
+        file_path = source / f"module_{index}.py"
+        file_path.write_text(f"def fn_{index}():\n    return {index}\n", encoding="utf-8")
+        parsed = _parsed(file_path)
+        parsed.ast_summary["calls"] = index
+        files.append(parsed)
+        explanations[str(file_path)] = "long explanation"
+
+    snapshot = build_architecture_snapshot(files, root_path=str(tmp_path), explanations=explanations)
+
+    assert len(snapshot["files"]) == 3
+    assert snapshot["metadata"] == {"total_files": 6, "sent_files": 3, "truncated": True}
+    assert snapshot["files"][0]["path"] == "src/module_5.py"
+    assert all(len(item["explanation"]) <= 8 for item in snapshot["files"])
+
+
 def test_project_graph_accepts_valid_ai_relationships_and_filters_bad_paths(tmp_path: Path):
     backend = tmp_path / "backend"
     frontend = tmp_path / "frontend"

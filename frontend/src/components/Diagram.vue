@@ -302,7 +302,7 @@ function renderGraph() {
     }
   }))
 
-  const layout = layoutModules()
+  const layout = layoutModules(width)
   const visibleIds = new Set(layout.nodes.map((node) => node.id))
 
   const combos = layout.groups.map((group) => ({
@@ -331,9 +331,9 @@ function renderGraph() {
       label: node.label,
       rawLabel: node.label,
       filename: node.filename || node.label || fileName(node.path),
-      fileName: shortText(node.filename || node.label || fileName(node.path), 18),
+      fileName: shortText(node.filename || node.label || fileName(node.path), 15),
       description: node.description || '',
-      descriptionText: shortText(node.description || '项目主体源码文件', 20),
+      descriptionText: shortText(compactDescription(node), 12),
       language: node.language,
       nodeKind: node.nodeKind || (node.isFile ? 'file' : node.type),
       path: node.path,
@@ -382,16 +382,27 @@ function renderGraph() {
   graph.fitView()
 }
 
-function layoutModules() {
+type LayoutGroup = GraphGroup & {
+  files: GraphNode[]
+  role: string
+  metrics: ReturnType<typeof groupMetrics>
+}
+
+function layoutModules(containerWidth: number) {
   const groups = props.graphData.groups || []
   const fileNodes = props.graphData.nodes.filter((node) => node.isFile)
-  const grouped = groups
-    .map((group) => ({
-      ...group,
-      files: fileNodes
+  const grouped: LayoutGroup[] = groups
+    .map((group) => {
+      const files = fileNodes
         .filter((node) => node.groupId === group.id)
         .sort((a, b) => String(a.path || a.label).localeCompare(String(b.path || b.label)))
-    }))
+      return {
+        ...group,
+        files,
+        role: '',
+        metrics: groupMetrics(files.length)
+      }
+    })
     .filter((group) => group.files.length > 0)
 
   const orphanFiles = fileNodes.filter((node) => !node.groupId || !groups.some((group) => group.id === node.groupId))
@@ -401,57 +412,49 @@ function layoutModules() {
       label: '其他文件',
       description: '未归入主要模块的源码文件',
       color: '#94a3b8',
-      files: orphanFiles
+      files: orphanFiles,
+      role: '',
+      metrics: groupMetrics(orphanFiles.length)
     })
   }
 
   const positioned: GraphNode[] = []
-  const roles = new Map<string, Array<GraphGroup & { files: GraphNode[] }>>()
+  const roles = new Map<string, LayoutGroup[]>()
   grouped.forEach((group) => {
     const role = groupRole(group)
+    group.role = role
     roles.set(role, [...(roles.get(role) || []), group])
   })
 
-  let runtimeX = 210
-  ;(roles.get('runtime') || []).forEach((group) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, runtimeX + metrics.width / 2, 68, positioned)
-    runtimeX += metrics.width + 64
-  })
+  const roleOrder = ['runtime', 'frontend', 'backend', 'data', 'shared', 'other']
+  const allGroups = roleOrder.flatMap((role) => roles.get(role) || [])
+  const stageWidth = Math.max(720, containerWidth - 116)
+  const marginX = 72
+  const gapX = 96
+  const gapY = 72
+  let cursorY = 76
 
-  let frontendY = 238
-  ;(roles.get('frontend') || []).forEach((group) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, 660, frontendY, positioned)
-    frontendY += metrics.height + 58
-  })
+  for (let index = 0; index < allGroups.length; ) {
+    const row: LayoutGroup[] = []
+    let rowWidth = 0
+    while (index < allGroups.length) {
+      const group = allGroups[index]
+      const nextWidth = rowWidth + (row.length ? gapX : 0) + group.metrics.width
+      if (row.length && nextWidth > stageWidth) break
+      row.push(group)
+      rowWidth = nextWidth
+      index += 1
+    }
 
-  let backendY = Math.max(470, frontendY + 18)
-  ;(roles.get('backend') || []).forEach((group) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, 360, backendY, positioned)
-    backendY += metrics.height + 56
-  })
-
-  ;(roles.get('data') || []).forEach((group) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, 360, backendY, positioned)
-    backendY += metrics.height + 52
-  })
-
-  let sharedY = Math.max(470, frontendY + 18)
-  ;(roles.get('shared') || []).forEach((group) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, 900, sharedY, positioned)
-    sharedY += metrics.height + 58
-  })
-
-  let otherY = Math.max(backendY, sharedY, 620)
-  ;(roles.get('other') || []).forEach((group, index) => {
-    const metrics = groupMetrics(group.files.length)
-    placeGroupFiles(group, index % 2 === 0 ? 360 : 900, otherY, positioned)
-    if (index % 2 === 1) otherY += metrics.height + 58
-  })
+    const rowHeight = Math.max(...row.map((group) => group.metrics.height))
+    const startX = marginX + Math.max(0, (stageWidth - rowWidth) / 2)
+    let cursorX = startX
+    row.forEach((group) => {
+      placeGroupFiles(group, cursorX + group.metrics.width / 2, cursorY, positioned)
+      cursorX += group.metrics.width + gapX
+    })
+    cursorY += rowHeight + gapY
+  }
 
   return { groups: grouped, nodes: positioned }
 }
@@ -459,10 +462,10 @@ function layoutModules() {
 function groupMetrics(fileCount: number) {
   const columns = Math.min(3, Math.max(1, fileCount))
   const rows = Math.ceil(fileCount / columns)
-  const cardWidth = 138
-  const cardHeight = 58
-  const gapX = 34
-  const gapY = 30
+  const cardWidth = 168
+  const cardHeight = 60
+  const gapX = 42
+  const gapY = 34
   return {
     columns,
     rows,
@@ -655,8 +658,8 @@ function relationLabel(type = '') {
 
 function nodeSize(node: GraphNode) {
   if (!node.isFile) return [168, 48]
-  if (node.shape === 'database') return [140, 58]
-  return [138, 56]
+  if (node.shape === 'database') return [168, 60]
+  return [168, 58]
 }
 
 function isMatched(node: GraphNode) {
@@ -676,12 +679,21 @@ function shortText(value: string, max: number) {
   return clean.length > max ? `${clean.slice(0, max)}...` : clean
 }
 
+function compactDescription(node: GraphNode) {
+  const summary = String(node.description || '')
+  const match = summary.match(/(函数|类|导入|调用)\s*\d+/g)
+  if (match?.length) return match.slice(0, 2).join('，')
+  const type = String(node.type || node.nodeKind || '')
+  const language = String(node.language || '')
+  if (type && language) return `${type} · ${language}`
+  return type || language || '关键文件'
+}
+
 function observeResize() {
   if (!container.value) return
   resizeObserver = new ResizeObserver(() => {
     if (!graph || !container.value) return
     graph.changeSize(container.value.clientWidth || 1180, container.value.clientHeight || 720)
-    graph.fitView()
   })
   resizeObserver.observe(container.value)
 }
@@ -701,7 +713,7 @@ watch(
 )
 
 watch(
-  () => [props.selectedPath, props.highlightQuery],
+  () => props.highlightQuery,
   async () => {
     await nextTick()
     renderGraph()
@@ -736,10 +748,10 @@ onBeforeUnmount(() => {
   height: 72vh;
   min-height: 640px;
   background:
-    linear-gradient(rgba(124, 58, 237, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.07) 1px, transparent 1px),
-    #efe6ff;
-  background-size: 28px 28px;
+    linear-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.16) 1px, transparent 1px),
+    #ffffff;
+  background-size: 32px 32px;
 }
 
 @media (max-width: 900px) {

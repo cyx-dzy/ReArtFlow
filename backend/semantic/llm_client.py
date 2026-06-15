@@ -33,15 +33,14 @@ from .prompt_templates import build_semantic_function_schema, build_semantic_mes
 
 logger = logging.getLogger(__name__)
 
-QIANWEN_FALLBACK_MODELS = [
-    "qwen3.7-plus",
-    "qwen-math-turbo",
-    "qwen3-vl-235b-a22b-thinking",
-    "qwen3-vl-32b-thinking",
-    "qwen-plus-2025-07-28",
-    "qwen-max",
-    "glm-5",
-]
+QIANWEN_FALLBACK_MODELS: list[str] = []
+
+
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    try:
+        return max(int(os.getenv(name, str(default))), minimum)
+    except ValueError:
+        return default
 
 
 class LLMClient:
@@ -246,7 +245,7 @@ class LLMClient:
                 "messages": messages,
                 "response_format": {"type": "json_object"},
             },
-            timeout=60,
+            timeout=_env_int("LLM_ARCHITECTURE_TIMEOUT", 25),
         )
         content = payload["choices"][0]["message"]["content"]
         return json.loads(content)

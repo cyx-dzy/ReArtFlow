@@ -195,14 +195,17 @@ def _collect_architecture_diagram(
         snapshot = build_architecture_snapshot(parsed_files, root_path=root_path, explanations=explanations)
         client = LLMClient()
         logger.info(
-            "Starting architecture graph generation provider=%s model=%s files=%s",
+            "Starting architecture graph generation provider=%s model=%s files=%s total_files=%s truncated=%s",
             provider,
             client.model,
             len(snapshot["files"]),
+            snapshot.get("metadata", {}).get("total_files", len(snapshot["files"])),
+            snapshot.get("metadata", {}).get("truncated", False),
         )
         return client.generate_architecture_graph(snapshot)
     except Exception as exc:
-        logger.warning("Architecture graph generation failed: %s", exc)
+        logger.warning("Architecture graph generation failed, falling back to static diagram: %s", exc)
+        _update_job(job_id, stage="ai_fallback", message="AI 架构图生成失败，已使用静态图谱兜底")
         return None
 
 
